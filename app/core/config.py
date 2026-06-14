@@ -1,0 +1,38 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Settings:
+    """
+    Configuracion de la aplicacion. Lee de variables de entorno (.env).
+    Para conectar a tu MySQL, crea un archivo .env en la raiz con:
+
+    DB_HOST=localhost
+    DB_PORT=3306
+    DB_USER=root
+    DB_PASSWORD=tu_password
+    DB_NAME=ganajec_db
+    SECRET_KEY=una_clave_secreta_larga
+    """
+
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "3306")
+    DB_USER = os.getenv("DB_USER", "root")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+    DB_NAME = os.getenv("DB_NAME", "ganajec_db")
+
+    SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esta-clave-en-produccion")
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas
+
+    @property
+    def database_url(self) -> str:
+        return (
+            f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        )
+
+
+settings = Settings()

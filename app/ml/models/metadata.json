@@ -1,0 +1,24 @@
+{
+  "version": "1.1",
+  "features": [
+    "edad_meses", "peso_kg", "temperatura", "frecuencia_cardiaca",
+    "frecuencia_respiratoria", "produccion_leche", "condicion_corporal",
+    "consumo_alimento_kg", "consumo_agua_l"
+  ],
+  "n_clases": 23,
+  "metricas": {
+    "random_forest_accuracy": 0.4739,
+    "isolation_forest_sensibilidad": 0.049,
+    "isolation_forest_especificidad": 0.9508
+  },
+  "umbrales_severidad": {
+    "leve": 0.0,
+    "moderada": 0.12,
+    "alta": 0.20
+  },
+  "notas": {
+    "random_forest": "Modelo principal de prediccion de enfermedades. 23 clases (22 enfermedades + Healthy).",
+    "isolation_forest": "Detecta anomalias productivas entrenado solo con bovinos sanos. Genera alertas tipo productiva.",
+    "confianza": "Las confianzas son bajas (media 0.14) por la cantidad de clases; los umbrales de severidad estan calibrados a esa escala."
+  }
+}
