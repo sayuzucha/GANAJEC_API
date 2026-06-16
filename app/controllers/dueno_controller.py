@@ -1,28 +1,35 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import Usuario, Rancho, Bovino, Suscripcion
-from app.schemas.general_schema import RanchoUpdate, GanaderoCreate, GanaderoUpdate
+from app.models import Usuario, Rancho, RanchoGanadero, Bovino, Suscripcion
+from app.schemas.general_schema import (
+    RanchoCreate, RanchoUpdate,
+    GanaderoCreate, GanaderoUpdate,
+    AsignarGanaderoRancho,
+)
 from app.core.security import hash_password
+from app.models.rancho import _generar_codigo
 
 
 class DuenoController:
     """
-    Controlador del rol Dueno del rancho. Endpoints:
-    1. Perfil del dueno
-    2. Dashboard del rancho
-    3. Actualizar rancho
-    4. Listar ganaderos del rancho
-    5. Registrar nuevo ganadero
-    6. Actualizar ganadero
-    7. Listar todos los bovinos del rancho
-    8. Ver suscripcion/plan actual
+    Controlador del rol Dueño del rancho.
+
+    Lógica de rancho-ganadero:
+    - Un dueño puede tener N ranchos.
+    - Un rancho puede tener N ganaderos (tabla intermedia rancho_ganaderos).
+    - Un ganadero puede estar asignado a M ranchos (del mismo dueño u otros).
+    - Al registrar un ganadero nuevo, se crea el Usuario y se asigna al rancho indicado.
+    - Se puede asignar un ganadero existente a un rancho adicional con
+      POST /api/dueno/ranchos/{rancho_id}/ganaderos.
     """
 
     # 1. GET /api/dueno/{dueno_id}
     @staticmethod
     def perfil(db: Session, dueno_id: str):
-        dueno = db.query(Usuario).filter(Usuario.id == dueno_id, Usuario.rol == "dueno").first()
+        dueno = db.query(Usuario).filter(
+            Usuario.id == dueno_id, Usuario.rol == "dueno"
+        ).first()
         if not dueno:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -30,7 +37,47 @@ class DuenoController:
             )
 
         ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
-        return {**dueno.to_dict(), "total_ranchos": len(ranchos), "ranchos": [r.to_dict() for r in ranchos]}
+
+        # Total de ganaderos únicos en TODOS los ranchos del dueño
+        rancho_ids = [r.id for r in ranchos]
+        ganadero_ids_unicos = set()
+        if rancho_ids:
+            asignaciones = (
+                db.query(RanchoGanadero.ganadero_id)
+                .filter(RanchoGanadero.rancho_id.in_(rancho_ids))
+                .all()
+            )
+            ganadero_ids_unicos = {a.ganadero_id for a in asignaciones}
+
+        return {
+            **dueno.to_dict(),
+            "total_ranchos": len(ranchos),
+            "total_ganaderos": len(ganadero_ids_unicos),
+            # include_codigo=True para que el dueño pueda ver/compartir los códigos
+            "ranchos": [r.to_dict(include_codigo=True) for r in ranchos],
+        }
+
+    # 1b. POST /api/dueno/ranchos
+    @staticmethod
+    def crear_rancho(db: Session, dueno_id: str, data: RanchoCreate):
+        # Generar código único: reintenta si hay colisión (improbable con 8 chars)
+        for _ in range(5):
+            codigo = _generar_codigo()
+            if not db.query(Rancho).filter(Rancho.codigo_invitacion == codigo).first():
+                break
+
+        nuevo = Rancho(
+            nombre=data.nombre,
+            municipio=data.municipio,
+            estado=data.estado,
+            dueno_id=dueno_id,
+            codigo_invitacion=codigo,
+        )
+        db.add(nuevo)
+        db.commit()
+        db.refresh(nuevo)
+        # include_codigo=True: el dueño necesita ver el código para compartirlo
+        return nuevo.to_dict(include_codigo=True)
 
     # 2. GET /api/dueno/ranchos/{rancho_id}
     @staticmethod
@@ -47,12 +94,28 @@ class DuenoController:
         for b in bovinos:
             por_categoria[b.categoria] = por_categoria.get(b.categoria, 0) + 1
 
+        # Ganaderos asignados a este rancho via tabla intermedia
+        asignaciones = (
+            db.query(RanchoGanadero)
+            .filter(RanchoGanadero.rancho_id == rancho_id)
+            .all()
+        )
+        ganadero_ids = [a.ganadero_id for a in asignaciones]
+        ganaderos = (
+            db.query(Usuario)
+            .filter(Usuario.id.in_(ganadero_ids))
+            .all()
+            if ganadero_ids else []
+        )
+
         return {
             "rancho": rancho.to_dict(),
             "resumen": {
                 "total_bovinos": len(bovinos),
                 "por_categoria": por_categoria,
+                "total_ganaderos": len(ganaderos),
             },
+            "ganaderos": [g.to_dict() for g in ganaderos],
         }
 
     # 3. PUT /api/dueno/ranchos/{rancho_id}
@@ -89,11 +152,12 @@ class DuenoController:
                 detail=f"No encontrado: el rancho con id '{rancho_id}' no existe",
             )
 
-        # ganaderos = usuarios con rol ganadero que tienen al menos un bovino en este rancho
-        ganadero_ids = {
-            b.ganadero_id
-            for b in db.query(Bovino).filter(Bovino.rancho_id == rancho_id).all()
-        }
+        asignaciones = (
+            db.query(RanchoGanadero)
+            .filter(RanchoGanadero.rancho_id == rancho_id)
+            .all()
+        )
+        ganadero_ids = [a.ganadero_id for a in asignaciones]
         ganaderos = (
             db.query(Usuario)
             .filter(Usuario.id.in_(ganadero_ids), Usuario.rol == "ganadero")
@@ -107,7 +171,7 @@ class DuenoController:
             "ganaderos": [g.to_dict() for g in ganaderos],
         }
 
-    # 5. POST /api/dueno/ganaderos
+    # 5. POST /api/dueno/ganaderos — crea ganadero nuevo y lo asigna al rancho
     @staticmethod
     def registrar_ganadero(db: Session, data: GanaderoCreate):
         rancho = db.query(Rancho).filter(Rancho.id == data.rancho_id).first()
@@ -132,9 +196,59 @@ class DuenoController:
             activo=True,
         )
         db.add(nuevo)
+        db.flush()  # obtener nuevo.id sin hacer commit aún
+
+        # Asignar al rancho en la tabla intermedia
+        asignacion = RanchoGanadero(
+            rancho_id=data.rancho_id,
+            ganadero_id=nuevo.id,
+        )
+        db.add(asignacion)
         db.commit()
         db.refresh(nuevo)
-        return nuevo.to_dict()
+
+        return {
+            **nuevo.to_dict(),
+            "rancho_asignado": rancho.nombre,
+        }
+
+    # 5b. POST /api/dueno/ranchos/{rancho_id}/ganaderos — asigna ganadero EXISTENTE
+    @staticmethod
+    def asignar_ganadero(db: Session, rancho_id: str, data: AsignarGanaderoRancho):
+        rancho = db.query(Rancho).filter(Rancho.id == rancho_id).first()
+        if not rancho:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el rancho con id '{rancho_id}' no existe",
+            )
+
+        ganadero = db.query(Usuario).filter(
+            Usuario.id == data.ganadero_id, Usuario.rol == "ganadero"
+        ).first()
+        if not ganadero:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el ganadero con id '{data.ganadero_id}' no existe",
+            )
+
+        ya_asignado = db.query(RanchoGanadero).filter(
+            RanchoGanadero.rancho_id == rancho_id,
+            RanchoGanadero.ganadero_id == data.ganadero_id,
+        ).first()
+        if ya_asignado:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Conflicto: el ganadero '{ganadero.nombre}' ya esta asignado a este rancho",
+            )
+
+        asignacion = RanchoGanadero(rancho_id=rancho_id, ganadero_id=data.ganadero_id)
+        db.add(asignacion)
+        db.commit()
+
+        return {
+            "mensaje": f"Ganadero '{ganadero.nombre}' asignado al rancho '{rancho.nombre}'",
+            "ganadero": ganadero.to_dict(),
+        }
 
     # 6. PUT /api/dueno/ganaderos/{ganadero_id}
     @staticmethod
@@ -173,12 +287,18 @@ class DuenoController:
             )
 
         bovinos = db.query(Bovino).filter(Bovino.rancho_id == rancho_id).all()
-        return {"rancho": rancho.nombre, "total": len(bovinos), "bovinos": [b.to_dict() for b in bovinos]}
+        return {
+            "rancho": rancho.nombre,
+            "total": len(bovinos),
+            "bovinos": [b.to_dict() for b in bovinos],
+        }
 
     # 8. GET /api/dueno/{dueno_id}/suscripcion
     @staticmethod
     def obtener_suscripcion(db: Session, dueno_id: str):
-        dueno = db.query(Usuario).filter(Usuario.id == dueno_id, Usuario.rol == "dueno").first()
+        dueno = db.query(Usuario).filter(
+            Usuario.id == dueno_id, Usuario.rol == "dueno"
+        ).first()
         if not dueno:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -46,3 +46,11 @@ class RegistroSintomaCreate(BaseModel):
 
 class AlertaUpdate(BaseModel):
     leida: bool
+
+
+class UnirseRanchoRequest(BaseModel):
+    codigo_invitacion: str = Field(
+        ..., min_length=8, max_length=8,
+        examples=["GAN4X2BQ"],
+        description="Código de 8 caracteres que el dueño del rancho comparte con sus ganaderos.",
+    )

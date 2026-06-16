@@ -2,10 +2,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 import datetime
 
-from app.models import Usuario, Bovino, Rancho, RegistroSintoma, Prediccion, Alerta
-from app.schemas.ganadero_schema import BovinoCreate, BovinoUpdate, RegistroSintomaCreate, AlertaUpdate
+from app.models import Usuario, Bovino, Rancho, RanchoGanadero, RegistroSintoma, Prediccion, Alerta
+from app.schemas.ganadero_schema import BovinoCreate, BovinoUpdate, RegistroSintomaCreate, AlertaUpdate, UnirseRanchoRequest
 from app.ml import predictor
 from app.ml import nlp
+from app.services import fcm_service
 
 
 class GanaderoController:
@@ -245,6 +246,8 @@ class GanaderoController:
     # 8. POST /api/ganadero/registros-sintomas
     @staticmethod
     def registrar_sintoma(db: Session, ganadero_id: str, data: RegistroSintomaCreate):
+        # Cargar el ganadero para tener su fcm_token al final
+        ganadero_obj = db.query(Usuario).filter(Usuario.id == ganadero_id).first()
         bovino = db.query(Bovino).filter(Bovino.id == data.bovino_id).first()
         if not bovino:
             raise HTTPException(
@@ -366,6 +369,25 @@ class GanaderoController:
         db.refresh(nuevo)
         db.refresh(prediccion)
 
+        # ── 4. Notificaciones push via Firebase FCM ────────────────
+        # Solo se envían si el ganadero tiene un fcm_token registrado.
+        # Los errores de FCM son silenciosos (no rompen la respuesta).
+        fcm_token = ganadero_obj.fcm_token if ganadero_obj else None
+        if fcm_token:
+            if alerta_creada:
+                fcm_service.notify_alerta_productiva(
+                    fcm_token=fcm_token,
+                    bovino_nombre=bovino.nombre,
+                    score=resultado_iso["score"],
+                )
+            if alerta_clinica:
+                fcm_service.notify_alerta_clinica(
+                    fcm_token=fcm_token,
+                    bovino_nombre=bovino.nombre,
+                    enfermedad=resultado_rf["enfermedad"],
+                    confianza=resultado_rf["confianza"],
+                )
+
         respuesta = {
             "mensaje": "Registro guardado y procesado por los modelos de IA",
             "registro": nuevo.to_dict(),
@@ -378,6 +400,38 @@ class GanaderoController:
             respuesta["alerta_clinica"] = alerta_clinica.to_dict()
 
         return respuesta
+
+    # 9b. POST /api/ganadero/unirse-rancho
+    @staticmethod
+    def unirse_rancho(db: Session, ganadero_id: str, data: UnirseRanchoRequest):
+        # Buscar rancho por código (case-insensitive: normalizamos a mayúsculas)
+        codigo = data.codigo_invitacion.upper().strip()
+        rancho = db.query(Rancho).filter(Rancho.codigo_invitacion == codigo).first()
+        if not rancho:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Código inválido: no existe ningún rancho con ese código de invitación",
+            )
+
+        # Verificar que no esté ya asignado
+        ya_asignado = db.query(RanchoGanadero).filter(
+            RanchoGanadero.rancho_id == rancho.id,
+            RanchoGanadero.ganadero_id == ganadero_id,
+        ).first()
+        if ya_asignado:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Conflicto: ya estás asignado al rancho '{rancho.nombre}'",
+            )
+
+        asignacion = RanchoGanadero(rancho_id=rancho.id, ganadero_id=ganadero_id)
+        db.add(asignacion)
+        db.commit()
+
+        return {
+            "mensaje": f"Te uniste al rancho '{rancho.nombre}' exitosamente",
+            "rancho": rancho.to_dict(),   # sin include_codigo: ganadero no necesita ver el código
+        }
 
     # 9. GET /api/ganadero/alertas
     @staticmethod

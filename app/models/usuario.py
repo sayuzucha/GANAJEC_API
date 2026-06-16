@@ -15,6 +15,9 @@ class Usuario(Base, UUIDMixin):
     rol = Column(Enum("ganadero", "dueno", "admin", name="rol_usuario"), nullable=False)
     activo = Column(Boolean, default=True, nullable=False)
     creado_en = Column(DateTime, server_default=func.now())
+    # Token del dispositivo móvil para notificaciones push via Firebase FCM.
+    # Se actualiza desde la app tras el login con PUT /api/auth/fcm-token.
+    fcm_token = Column(String(255), nullable=True)
 
     # Relaciones
     ranchos = relationship("Rancho", back_populates="dueno", foreign_keys="Rancho.dueno_id")
@@ -24,6 +27,8 @@ class Usuario(Base, UUIDMixin):
     notificaciones = relationship("Notificacion", back_populates="usuario")
     suscripciones = relationship("Suscripcion", back_populates="usuario")
     logs_auditoria = relationship("AuditoriaLog", back_populates="usuario")
+    # Ranchos a los que el ganadero está asignado (tabla intermedia N:M)
+    asignaciones_rancho = relationship("RanchoGanadero", back_populates="ganadero")
 
     def to_dict(self, include_email=True):
         data = {

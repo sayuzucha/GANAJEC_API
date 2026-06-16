@@ -4,25 +4,18 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.controllers.ganadero_controller import GanaderoController
-from app.schemas.ganadero_schema import BovinoCreate, BovinoUpdate, RegistroSintomaCreate, AlertaUpdate
+from app.schemas.ganadero_schema import (
+    BovinoCreate, BovinoUpdate,
+    RegistroSintomaCreate, AlertaUpdate,
+    UnirseRanchoRequest,
+)
 
 router = APIRouter()
 ganadero_only = require_role("ganadero")
 
-
-# 1. Perfil del ganadero
-@router.get("/{ganadero_id}")
-async def perfil(ganadero_id: str, db: Session = Depends(get_db),
-                  usuario=Depends(ganadero_only)):
-    return GanaderoController.perfil(db, ganadero_id)
-
-
-# 2. Listar bovinos a cargo del ganadero
-@router.get("/{ganadero_id}/bovinos")
-async def listar_bovinos(ganadero_id: str, db: Session = Depends(get_db),
-                          usuario=Depends(ganadero_only)):
-    return GanaderoController.listar_bovinos(db, ganadero_id)
-
+# ──────────────────────────────────────────────────────────────
+# ORDEN IMPORTANTE: rutas literales antes de /{ganadero_id}
+# ──────────────────────────────────────────────────────────────
 
 # 3. Detalle de un bovino
 @router.get("/bovinos/{bovino_id}")
@@ -52,36 +45,59 @@ async def eliminar_bovino(bovino_id: str, db: Session = Depends(get_db),
     return GanaderoController.eliminar_bovino(db, bovino_id)
 
 
-# 7. Predicciones de enfermedad de un bovino especifico
+# 7. Predicciones de un bovino específico
 @router.get("/bovinos/{bovino_id}/predicciones")
 async def obtener_predicciones(bovino_id: str, db: Session = Depends(get_db),
                                 usuario=Depends(ganadero_only)):
     return GanaderoController.obtener_predicciones(db, bovino_id)
 
 
-# 7b. Historial global: predicciones de TODOS los bovinos del ganadero
-@router.get("/{ganadero_id}/predicciones")
-async def listar_predicciones(ganadero_id: str, db: Session = Depends(get_db),
-                               usuario=Depends(ganadero_only)):
-    return GanaderoController.listar_predicciones(db, ganadero_id)
-
-
-# 8. Registrar nota de campo / sintomas
+# 8. Registrar nota de campo / síntomas
 @router.post("/registros-sintomas", status_code=201)
 async def registrar_sintoma(data: RegistroSintomaCreate, db: Session = Depends(get_db),
                              usuario=Depends(ganadero_only)):
     return GanaderoController.registrar_sintoma(db, usuario.id, data)
 
 
-# 9. Listar alertas del ganadero (filtro opcional por bovino)
+# 10. Marcar alerta como leída
+@router.patch("/alertas/{alerta_id}")
+async def marcar_alerta(alerta_id: str, data: AlertaUpdate, db: Session = Depends(get_db),
+                         usuario=Depends(ganadero_only)):
+    return GanaderoController.marcar_alerta(db, alerta_id, data)
+
+
+# 9b. Unirse a un rancho mediante código de invitación
+@router.post("/unirse-rancho", status_code=201)
+async def unirse_rancho(data: UnirseRanchoRequest, db: Session = Depends(get_db),
+                         usuario=Depends(ganadero_only)):
+    return GanaderoController.unirse_rancho(db, usuario.id, data)
+
+
+# ── Rutas con /{ganadero_id} — AL FINAL ──────────────────────
+
+# 2. Listar bovinos a cargo del ganadero
+@router.get("/{ganadero_id}/bovinos")
+async def listar_bovinos(ganadero_id: str, db: Session = Depends(get_db),
+                          usuario=Depends(ganadero_only)):
+    return GanaderoController.listar_bovinos(db, ganadero_id)
+
+
+# 7b. Historial global de predicciones del ganadero
+@router.get("/{ganadero_id}/predicciones")
+async def listar_predicciones(ganadero_id: str, db: Session = Depends(get_db),
+                               usuario=Depends(ganadero_only)):
+    return GanaderoController.listar_predicciones(db, ganadero_id)
+
+
+# 9. Listar alertas del ganadero (filtro opcional ?bovino_id=)
 @router.get("/{ganadero_id}/alertas")
 async def listar_alertas(ganadero_id: str, bovino_id: str = None,
                           db: Session = Depends(get_db), usuario=Depends(ganadero_only)):
     return GanaderoController.listar_alertas(db, ganadero_id, bovino_id)
 
 
-# 10. Marcar alerta como leida
-@router.patch("/alertas/{alerta_id}")
-async def marcar_alerta(alerta_id: str, data: AlertaUpdate, db: Session = Depends(get_db),
-                         usuario=Depends(ganadero_only)):
-    return GanaderoController.marcar_alerta(db, alerta_id, data)
+# 1. Perfil del ganadero — DEBE IR AL FINAL (catch-all de 1 segmento)
+@router.get("/{ganadero_id}")
+async def perfil(ganadero_id: str, db: Session = Depends(get_db),
+                  usuario=Depends(ganadero_only)):
+    return GanaderoController.perfil(db, ganadero_id)

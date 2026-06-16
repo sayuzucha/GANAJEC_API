@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GANAJEC AI — Flujo y Modelo ER</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #FAFAF7; --surface: #FFFFFF; --border: #E8E5DC;
+    --text: #1A1A1A; --muted: #888880; --faint: #AEADA6;
+    --green: #1D7A55; --green-light: #E8F5EF;
+    --blue: #185FA5; --blue-light: #E6F1FB;
+    --red: #C0392B; --red-light: #FDEDEC;
+    --amber: #B8860B; --amber-light: #FEF9E7;
+    --purple: #534AB7; --purple-light: #EEEDFE;
+    --cream: #F5F3EE;
+    --teal: #0E7490; --teal-light: #E0F7FA;
+    --orange: #C05621; --orange-light: #FEF3EB;
+  }
+  body { background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; color: var(--text); padding: 40px; }
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 48px; }
+  h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; margin-bottom: 24px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  section { margin-bottom: 60px; }
+
+  /* ── FLUJO ─────────────────────────────────────────────────────────────────── */
+  .flow-wrap { overflow-x: auto; }
+  .flow { display: flex; flex-direction: column; gap: 0; min-width: 980px; }
+  .flow-row { display: flex; align-items: flex-start; gap: 0; }
+  .screen {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 10px 14px; font-size: 12.5px;
+    font-weight: 600; white-space: nowrap; position: relative;
+    text-align: center; min-width: 130px;
+  }
+  .screen.auth   { border-color: var(--blue);   background: var(--blue-light);   color: var(--blue); }
+  .screen.main   { border-color: var(--green);  background: var(--green-light);  color: var(--green); }
+  .screen.detail { border-color: var(--border); background: var(--surface);      color: var(--text); }
+  .screen.modal  { border-color: var(--amber);  background: var(--amber-light);  color: var(--amber); border-style: dashed; }
+  .screen.plan   { border-color: var(--purple); background: var(--purple-light); color: var(--purple); }
+  .screen.dueno  { border-color: var(--orange); background: var(--orange-light); color: var(--orange); }
+  .screen .label { font-size: 10px; font-weight: 400; color: var(--faint); margin-top: 2px; }
+  .arrow-h { display: flex; align-items: center; padding: 0 4px; color: var(--faint); font-size: 16px; align-self: center; }
+  .arrow-h span { font-size: 10px; color: var(--muted); white-space: nowrap; margin: 0 4px; }
+  .flow-col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .arrow-v { display: flex; flex-direction: column; align-items: center; color: var(--faint); font-size: 11px; }
+  .arrow-v .line { width: 1.5px; height: 20px; background: var(--border); }
+  .arrow-v .tip  { font-size: 13px; color: var(--faint); line-height: 1; }
+  .arrow-v .lbl  { font-size: 10px; color: var(--muted); }
+  .group {
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    background: var(--cream); display: flex; flex-direction: column; gap: 10px; align-items: center;
+  }
+  .group-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin-bottom: 4px; }
+  .tab-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .divider { width: 100%; height: 1px; background: var(--border); margin: 24px 0; }
+
+  /* ── ER DIAGRAM ─────────────────────────────────────────────────────────────── */
+  .er-wrap { overflow-x: auto; }
+  svg.er { display: block; }
+
+  /* ── LEGEND ──────────────────────────────────────────────────────────────────── */
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 28px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* ── NOTE ────────────────────────────────────────────────────────────────────── */
+  .note { background: var(--amber-light); border: 1px solid #e8c84b; border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #7a5800; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>GANAJEC AI</h1>
+<p class="subtitle">Flujo de navegación · Modelo Entidad-Relación · Junio 2026</p>
+
+<!-- ══════════════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>1. Flujo de navegación — Ganadero</h2>
+
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#E6F1FB;border:1.5px solid #185FA5"></div> Autenticación</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#E8F5EF;border:1.5px solid #1D7A55"></div> Pantalla principal</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#fff;border:1.5px solid #E8E5DC"></div> Pantalla de detalle</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#FEF9E7;border:1.5px dashed #B8860B"></div> Bottom sheet / modal</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#EEEDFE;border:1.5px solid #534AB7"></div> Suscripción</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#FEF3EB;border:1.5px solid #C05621"></div> Dueño del rancho</div>
+  </div>
+
+  <div class="flow-wrap">
+    <div class="flow">
+      <!-- Row 1: Auth + Ganadero Home -->
+      <div class="flow-row" style="gap:0;margin-bottom:0;">
+        <div class="flow-col">
+          <div class="screen auth">🔐 Login</div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div></div>
+          <div class="screen auth" style="border-style:dashed;">📝 Register
+            <div class="label">elige rol: ganadero / dueño</div>
+          </div>
+        </div>
+        <div class="arrow-h">→<span>login exitoso + guardar FCM token</span></div>
+
+        <!-- Home ganadero + sus ramas -->
+        <div class="flow-col">
+          <div class="screen main" style="font-size:14px;padding:12px 20px;">🏠 Home
+            <div class="label">inicio ganadero</div>
+          </div>
+          <div class="arrow-v"><div class="line" style="height:28px"></div><div class="tip">↓</div></div>
+          <div class="group">
+            <div class="group-label">Bottom Navigation Bar</div>
+            <div class="tab-row">
+              <div class="screen detail" style="min-width:90px;">🔔 Alertas</div>
+              <div class="screen detail" style="min-width:90px;">➕ Registro</div>
+              <div class="screen detail" style="min-width:90px;">📊 Historial</div>
+              <div class="screen detail" style="min-width:90px;">👤 Perfil</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ramas desde Home ganadero -->
+        <div class="arrow-h">→<span>tap animal</span></div>
+        <div class="flow-col">
+          <div class="screen detail">🐄 Detalle Bovino</div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div></div>
+          <div class="tab-row" style="gap:8px;">
+            <div class="screen detail" style="min-width:110px;">✏️ Editar Bovino</div>
+            <div class="screen detail" style="min-width:110px;">🩺 Registrar Síntomas</div>
+          </div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div><div class="lbl">resultado ML+NLP</div></div>
+          <div class="screen detail">📋 Resultado Predicción</div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div><div class="lbl">ver historial</div></div>
+          <div class="screen detail">📜 Historial</div>
+        </div>
+
+        <!-- Rama Unirse a rancho -->
+        <div class="arrow-h" style="margin-left:18px;">→<span>pegar código</span></div>
+        <div class="flow-col">
+          <div class="screen modal">🔑 Ingresar Código
+            <div class="label">POST /ganadero/unirse-rancho</div>
+          </div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div><div class="lbl">código válido</div></div>
+          <div class="screen detail">✅ Unido al Rancho
+            <div class="label">rancho aparece en perfil</div>
+          </div>
+        </div>
+
+        <!-- Rama Perfil → Plan -->
+        <div class="arrow-h" style="margin-left:18px;">→<span>suscripción</span></div>
+        <div class="flow-col">
+          <div class="screen plan">💳 Mi Plan</div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div><div class="lbl">cambiar plan</div></div>
+          <div class="screen plan">🛒 Elegir Plan</div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div></div>
+          <div class="screen modal">💰 Billing Sheet
+            <div class="label">Google Play (pendiente API)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notas ganadero -->
+      <div class="note" style="margin-top:20px;max-width:900px;background:#E0F7FA;border-color:#0E7490;color:#0E7490;">
+        🔔 <b>FCM:</b> Tras el login, la app llama <code>PUT /api/auth/fcm-token</code> con el token del dispositivo.
+        Al registrar síntomas, si el modelo genera alertas clínicas o productivas, la API dispara un push automáticamente.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>2. Flujo de navegación — Dueño del rancho</h2>
+  <div class="flow-wrap">
+    <div class="flow">
+      <div class="flow-row" style="gap:0;">
+        <div class="flow-col">
+          <div class="screen auth">🔐 Login</div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div><div class="lbl">rol: dueno</div></div>
+          <div class="screen dueno">🏡 Inicio Dueño
+            <div class="label">redirigir por TokenStorage.role</div>
+          </div>
+        </div>
+
+        <div class="arrow-h">→<span>ver mis ranchos</span></div>
+        <div class="flow-col">
+          <div class="screen dueno">🏚 Lista Ranchos
+            <div class="label">GET /api/dueno/{id}</div>
+          </div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div></div>
+          <div class="screen dueno">➕ Crear Rancho
+            <div class="label">POST /api/dueno/ranchos</div>
+          </div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div></div>
+          <div class="screen modal">🔑 Código Generado
+            <div class="label">8 chars · compartir con ganadero</div>
+          </div>
+        </div>
+
+        <div class="arrow-h">→<span>tap rancho</span></div>
+        <div class="flow-col">
+          <div class="screen dueno">🏠 Detalle Rancho
+            <div class="label">GET /api/dueno/ranchos/{id}</div>
+          </div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div></div>
+          <div class="tab-row" style="gap:8px;">
+            <div class="screen detail" style="min-width:120px;">👥 Ver Ganaderos
+              <div class="label">GET .../ganaderos</div>
+            </div>
+            <div class="screen detail" style="min-width:120px;">🐄 Ver Bovinos
+              <div class="label">GET .../bovinos</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow-h">→<span>gestionar ganaderos</span></div>
+        <div class="flow-col">
+          <div class="screen detail">➕ Registrar Ganadero
+            <div class="label">POST /api/dueno/ganaderos</div>
+          </div>
+          <div class="arrow-v"><div class="line"></div><div class="tip">↓</div><div class="lbl">o asignar existente</div></div>
+          <div class="screen detail">🔗 Asignar Ganadero
+            <div class="label">POST .../ranchos/{id}/ganaderos</div>
+          </div>
+        </div>
+
+        <div class="arrow-h">→<span>suscripción</span></div>
+        <div class="flow-col">
+          <div class="screen plan">💳 Suscripción
+            <div class="label">GET /dueno/{id}/suscripcion</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:20px;max-width:900px;">
+        ⚠️ <b>Pendiente (Flutter):</b> Leer <code>TokenStorage.role</code> tras el login y redirigir al home correcto:
+        ganadero → Home ganadero · dueño → Inicio Dueño.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>3. Modelo Entidad-Relación</h2>
+
+  <div class="er-wrap">
+  <svg class="er" viewBox="0 0 1420 940" xmlns="http://www.w3.org/2000/svg" width="1420" height="940">
+    <defs>
+      <marker id="arr"      markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#AEADA6"/></marker>
+      <marker id="arr-grn"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#1D7A55"/></marker>
+      <marker id="arr-pur"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#534AB7"/></marker>
+      <marker id="arr-red"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#C0392B"/></marker>
+      <marker id="arr-teal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#0E7490"/></marker>
+      <marker id="arr-ora"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#C05621"/></marker>
+    </defs>
+
+    <!-- ══════════ ROW 1 (y=30) ══════════ -->
+
+    <!-- ── USUARIO (x=20, y=30, w=210, h=195) ── -->
+    <g transform="translate(20,30)">
+      <rect width="210" height="195" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="210" height="34" rx="10" fill="#E8F5EF"/>
+      <rect y="24" width="210" height="10" fill="#E8F5EF"/>
+      <text x="105" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Usuario</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#888880">nombre: String</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">email: String</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">rol: ganadero|dueno|admin</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">activo: bool</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">creado_en: DateTime</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#0E7490">fcm_token: String?</text>
+      <text x="105" y="179" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#0E7490" font-style="italic">→ push Firebase</text>
+      <text x="105" y="190" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">PUT /api/auth/fcm-token</text>
+    </g>
+
+    <!-- ── RANCHO (x=255, y=30, w=215, h=185) ── -->
+    <g transform="translate(255,30)">
+      <rect width="215" height="185" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="215" height="34" rx="10" fill="#FEF3EB"/>
+      <rect y="24" width="215" height="10" fill="#FEF3EB"/>
+      <text x="107" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Rancho</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 dueno_id: UUID → Usuario</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">nombre: String</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">municipio: String</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">estado: String</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">creado_en: DateTime</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#C05621" font-weight="600">codigo_invitacion: CHAR(8) unique</text>
+      <text x="107" y="178" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#C05621" font-style="italic">ganadero usa código para unirse</text>
+    </g>
+
+    <!-- ── BOVINO (x=500, y=30, w=230, h=238) ── -->
+    <g transform="translate(500,30)">
+      <rect width="230" height="238" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="230" height="34" rx="10" fill="#F5F3EE"/>
+      <rect y="24" width="230" height="10" fill="#F5F3EE"/>
+      <text x="115" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Bovino</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 rancho_id: UUID → Rancho</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#185FA5">🔗 ganadero_id: UUID → Usuario</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">nombre: String</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">raza: String</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">sexo: hembra|macho</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#888880">categoria: vaca|toro|becerro…</text>
+      <text x="12" y="173" font-family="monospace" font-size="11" fill="#888880">proposito: leche|carne|doble|cria</text>
+      <text x="12" y="190" font-family="monospace" font-size="11" fill="#888880">peso_kg: double</text>
+      <text x="12" y="207" font-family="monospace" font-size="11" fill="#888880">fecha_nacimiento: Date?</text>
+      <text x="12" y="224" font-family="monospace" font-size="11" fill="#888880">id_externo: String?</text>
+    </g>
+
+    <!-- ── REGISTRO SINTOMA (x=760, y=30, w=255, h=275) ── -->
+    <g transform="translate(760,30)">
+      <rect width="255" height="275" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="255" height="34" rx="10" fill="#F5F3EE"/>
+      <rect y="24" width="255" height="10" fill="#F5F3EE"/>
+      <text x="127" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">RegistroSintoma</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 bovino_id: UUID → Bovino</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#185FA5">🔗 ganadero_id: UUID → Usuario</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">texto_libre: Text (NLP)</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">temperatura: double?</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">frecuencia_cardiaca: double?</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#888880">frecuencia_respiratoria: double?</text>
+      <text x="12" y="173" font-family="monospace" font-size="11" fill="#888880">produccion_leche: double?</text>
+      <text x="12" y="190" font-family="monospace" font-size="11" fill="#888880">condicion_corporal: double?</text>
+      <text x="12" y="207" font-family="monospace" font-size="11" fill="#888880">consumo_alimento_kg: double?</text>
+      <text x="12" y="224" font-family="monospace" font-size="11" fill="#888880">consumo_agua_l: double?</text>
+      <text x="12" y="241" font-family="monospace" font-size="11" fill="#888880">sintomas_seleccionados: JSON?</text>
+      <text x="12" y="258" font-family="monospace" font-size="11" fill="#888880">registrado_en: DateTime</text>
+    </g>
+
+    <!-- ── PREDICCION (x=1045, y=30, w=240, h=198) ── -->
+    <g transform="translate(1045,30)">
+      <rect width="240" height="198" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="240" height="34" rx="10" fill="#E8F5EF"/>
+      <rect y="24" width="240" height="10" fill="#E8F5EF"/>
+      <text x="120" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Prediccion</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 registro_id: UUID → Registro</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">enfermedad: String</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">confianza: double (0–1)</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">severidad: leve|moderada|alta</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">features_nlp: JSON</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#888880">generado_en: DateTime</text>
+      <text x="120" y="177" text-anchor="middle" font-family="Segoe UI" font-size="9.5" fill="#1D7A55" font-style="italic">RandomForest (23 clases) + spaCy NLP</text>
+      <text x="120" y="191" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">bovino accesible vía registro→bovino</text>
+    </g>
+
+
+    <!-- ══════════ ROW 2 (y=370) ══════════ -->
+
+    <!-- ── AUDITORIA LOG (x=20, y=370, w=210, h=175) ── -->
+    <g transform="translate(20,370)">
+      <rect width="210" height="175" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="210" height="34" rx="10" fill="#F5F3EE"/>
+      <rect y="24" width="210" height="10" fill="#F5F3EE"/>
+      <text x="105" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">AuditoriaLog</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 usuario_id: UUID? → Usuario</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">accion: String</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">entidad_afectada: String</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">detalle: JSON?</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">ip: String?</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#888880">creado_en: DateTime</text>
+      <text x="105" y="169" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">GET /admin/sistema/estado</text>
+    </g>
+
+    <!-- ── RANCHO GANADERO (x=255, y=370, w=215, h=160) ── NUEVA TABLA N:M -->
+    <g transform="translate(255,370)">
+      <rect width="215" height="160" rx="10" fill="white" stroke="#C05621" stroke-width="1.5"/>
+      <rect width="215" height="34" rx="10" fill="#FEF3EB"/>
+      <rect y="24" width="215" height="10" fill="#FEF3EB"/>
+      <text x="107" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">RanchoGanadero</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#C05621" font-weight="600">🔑🔗 rancho_id → Rancho</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#C05621" font-weight="600">🔑🔗 ganadero_id → Usuario</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">asignado_en: DateTime</text>
+      <text x="107" y="110" text-anchor="middle" font-family="Segoe UI" font-size="9.5" fill="#C05621" font-weight="600" font-style="italic">Tabla intermedia N:M</text>
+      <text x="107" y="124" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">Rancho ←→ Ganadero</text>
+      <text x="107" y="138" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">Ganadero se une via codigo_invitacion</text>
+      <text x="107" y="152" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">PK compuesta: rancho_id + ganadero_id</text>
+    </g>
+
+    <!-- ── HISTORIAL PRODUCTIVO (x=500, y=370, w=215, h=193) ── -->
+    <g transform="translate(500,370)">
+      <rect width="215" height="193" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="215" height="34" rx="10" fill="#F5F3EE"/>
+      <rect y="24" width="215" height="10" fill="#F5F3EE"/>
+      <text x="107" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">HistorialProductivo</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 bovino_id: UUID → Bovino</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">fecha: Date</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">litros_leche: double?</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">kg_alimento: double?</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">ganancia_peso_kg: double?</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#888880">temperatura: double?</text>
+      <text x="12" y="173" font-family="monospace" font-size="11" fill="#888880">anomalia_detectada: bool</text>
+      <text x="107" y="187" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#B8860B" font-style="italic">⚠ sin endpoint API (mock)</text>
+    </g>
+
+    <!-- ── ALERTA (x=745, y=370, w=230, h=207) ── -->
+    <g transform="translate(745,370)">
+      <rect width="230" height="207" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="230" height="34" rx="10" fill="#FDEDEC"/>
+      <rect y="24" width="230" height="10" fill="#FDEDEC"/>
+      <text x="115" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Alerta</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 bovino_id: UUID → Bovino</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#185FA5">🔗 ganadero_id: UUID → Usuario</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">tipo: productiva|clinica</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">severidad: baja|media|alta</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">mensaje: Text</text>
+      <text x="12" y="156" font-family="monospace" font-size="11" fill="#888880">leida: bool</text>
+      <text x="12" y="173" font-family="monospace" font-size="11" fill="#888880">creado_en: DateTime</text>
+      <text x="115" y="196" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#C0392B" font-style="italic">auto: ML → Alerta → FCM push</text>
+    </g>
+
+    <!-- ── NOTIFICACION (x=1005, y=370, w=235, h=158) ── -->
+    <g transform="translate(1005,370)">
+      <rect width="235" height="158" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="235" height="34" rx="10" fill="#E0F7FA"/>
+      <rect y="24" width="235" height="10" fill="#E0F7FA"/>
+      <text x="117" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Notificacion</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 usuario_id: UUID → Usuario</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#185FA5">🔗 alerta_id: UUID → Alerta</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">enviada: bool</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">enviado_en: DateTime?</text>
+      <text x="117" y="148" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#0E7490" font-style="italic">registro interno de entrega FCM</text>
+    </g>
+
+
+    <!-- ══════════ ROW 3 (y=615) ══════════ -->
+
+    <!-- ── CONFIGURACION SISTEMA (x=20, y=615, w=235, h=163) ── -->
+    <g transform="translate(20,615)">
+      <rect width="235" height="163" rx="10" fill="white" stroke="#E8E5DC" stroke-width="1.5"/>
+      <rect width="235" height="34" rx="10" fill="#F5F3EE"/>
+      <rect y="24" width="235" height="10" fill="#F5F3EE"/>
+      <text x="117" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">ConfiguracionSistema</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#888880">clave: String (unique)</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">valor: String</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">descripcion: String?</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#185FA5">🔗 actualizado_por: UUID? → Usuario</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">actualizado_en: DateTime</text>
+      <text x="117" y="156" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#888880" font-style="italic">PUT /admin/configuracion/{clave}</text>
+    </g>
+
+    <!-- ── PLAN (x=540, y=615, w=230, h=165) ── -->
+    <g transform="translate(540,615)">
+      <rect width="230" height="165" rx="10" fill="white" stroke="#EEEDFE" stroke-width="1.5"/>
+      <rect width="230" height="34" rx="10" fill="#EEEDFE"/>
+      <rect y="24" width="230" height="10" fill="#EEEDFE"/>
+      <text x="115" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Plan</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#888880">nombre: String</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#888880">precio_mensual: double</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">limite_bovinos: int</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">permisos: JSON</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">activo: bool</text>
+      <text x="115" y="158" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#534AB7" font-style="italic">sin POST en API — se carga via seed</text>
+    </g>
+
+    <!-- ── SUSCRIPCION (x=800, y=615, w=230, h=165) ── -->
+    <g transform="translate(800,615)">
+      <rect width="230" height="165" rx="10" fill="white" stroke="#EEEDFE" stroke-width="1.5"/>
+      <rect width="230" height="34" rx="10" fill="#EEEDFE"/>
+      <rect y="24" width="230" height="10" fill="#EEEDFE"/>
+      <text x="115" y="21" text-anchor="middle" font-family="Segoe UI,system-ui" font-size="13" font-weight="700" fill="#1A1A1A">Suscripcion</text>
+      <text x="12" y="54"  font-family="monospace" font-size="11" fill="#1D7A55" font-weight="600">🔑 id: UUID</text>
+      <text x="12" y="71"  font-family="monospace" font-size="11" fill="#185FA5">🔗 usuario_id: UUID → Usuario</text>
+      <text x="12" y="88"  font-family="monospace" font-size="11" fill="#185FA5">🔗 plan_id: UUID → Plan</text>
+      <text x="12" y="105" font-family="monospace" font-size="11" fill="#888880">inicio: Date</text>
+      <text x="12" y="122" font-family="monospace" font-size="11" fill="#888880">fin: Date?</text>
+      <text x="12" y="139" font-family="monospace" font-size="11" fill="#888880">activa: bool</text>
+      <text x="115" y="158" text-anchor="middle" font-family="Segoe UI" font-size="9" fill="#534AB7" font-style="italic">GET /dueno/{id}/suscripcion</text>
+    </g>
+
+
+    <!-- ══════════════════ RELACIONES ══════════════════ -->
+
+    <!-- Usuario → Rancho (1:N dueno) -->
+    <line x1="230" y1="75" x2="255" y2="75" stroke="#AEADA6" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="231" y="70" font-family="Segoe UI" font-size="10" fill="#AEADA6">1</text>
+    <text x="240" y="70" font-family="Segoe UI" font-size="10" fill="#AEADA6">N</text>
+
+    <!-- Rancho → Bovino (1:N rancho_id) -->
+    <line x1="470" y1="95" x2="500" y2="95" stroke="#AEADA6" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="471" y="90" font-family="Segoe UI" font-size="10" fill="#AEADA6">1</text>
+    <text x="482" y="90" font-family="Segoe UI" font-size="10" fill="#AEADA6">N</text>
+
+    <!-- Usuario → Bovino (ganadero_id, arco inferior) -->
+    <path d="M 125 225 Q 125 295 615 295 Q 615 268 615 268" stroke="#AEADA6" stroke-width="1" stroke-dasharray="4,3" fill="none" marker-end="url(#arr)"/>
+    <text x="330" y="291" font-family="Segoe UI" font-size="9" fill="#888880">ganadero_id</text>
+
+    <!-- Bovino → RegistroSintoma (1:N) -->
+    <line x1="730" y1="120" x2="760" y2="120" stroke="#AEADA6" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="731" y="115" font-family="Segoe UI" font-size="10" fill="#AEADA6">1</text>
+    <text x="742" y="115" font-family="Segoe UI" font-size="10" fill="#AEADA6">N</text>
+
+    <!-- RegistroSintoma → Prediccion (1:1, ML) -->
+    <line x1="1015" y1="120" x2="1045" y2="120" stroke="#1D7A55" stroke-width="1.5" stroke-dasharray="5,3" fill="none" marker-end="url(#arr-grn)"/>
+    <text x="1016" y="115" font-family="Segoe UI" font-size="10" fill="#1D7A55">1</text>
+    <text x="1026" y="115" font-family="Segoe UI" font-size="10" fill="#1D7A55">1</text>
+    <text x="1016" y="130" font-family="Segoe UI" font-size="9" fill="#1D7A55">ML</text>
+
+    <!-- Rancho → RanchoGanadero (1:N, vertical) -->
+    <line x1="362" y1="215" x2="362" y2="370" stroke="#C05621" stroke-width="1.5" marker-end="url(#arr-ora)"/>
+    <text x="368" y="295" font-family="Segoe UI" font-size="9" fill="#C05621">1:N</text>
+
+    <!-- Usuario → RanchoGanadero (ganadero, diagonal) -->
+    <path d="M 125 225 Q 125 340 290 340 Q 310 340 310 370" stroke="#C05621" stroke-width="1" stroke-dasharray="5,3" fill="none" marker-end="url(#arr-ora)"/>
+    <text x="200" y="335" font-family="Segoe UI" font-size="9" fill="#C05621">ganadero 1:N</text>
+
+    <!-- Bovino → HistorialProductivo (1:N, vertical-curva) -->
+    <path d="M 615 268 Q 615 340 607 340 Q 607 370 607 370" stroke="#AEADA6" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+    <text x="618" y="320" font-family="Segoe UI" font-size="9" fill="#888880">1:N</text>
+
+    <!-- Bovino → Alerta (1:N, curva larga) -->
+    <path d="M 700 150 Q 870 150 860 370" stroke="#AEADA6" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+    <text x="806" y="268" font-family="Segoe UI" font-size="9" fill="#888880">1:N</text>
+
+    <!-- Usuario → AuditoriaLog (1:N, vertical) -->
+    <line x1="125" y1="225" x2="125" y2="370" stroke="#AEADA6" stroke-width="1" stroke-dasharray="4,3" fill="none" marker-end="url(#arr)"/>
+    <text x="130" y="300" font-family="Segoe UI" font-size="9" fill="#888880">1:N</text>
+
+    <!-- Alerta → Notificacion (1:N) -->
+    <line x1="975" y1="440" x2="1005" y2="440" stroke="#C0392B" stroke-width="1.5" marker-end="url(#arr-red)"/>
+    <text x="976" y="435" font-family="Segoe UI" font-size="10" fill="#C0392B">1</text>
+    <text x="988" y="435" font-family="Segoe UI" font-size="10" fill="#C0392B">N</text>
+
+    <!-- Plan → Suscripcion (1:N) -->
+    <line x1="770" y1="680" x2="800" y2="680" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arr-pur)"/>
+    <text x="771" y="675" font-family="Segoe UI" font-size="10" fill="#534AB7">1</text>
+    <text x="781" y="675" font-family="Segoe UI" font-size="10" fill="#534AB7">N</text>
+
+    <!-- Usuario → Suscripcion (dueño 1:1, arco superior) -->
+    <path d="M 230 140 Q 1020 140 1020 615" stroke="#534AB7" stroke-width="1" stroke-dasharray="4,4" fill="none" marker-end="url(#arr-pur)"/>
+    <text x="620" y="135" font-family="Segoe UI" font-size="9" fill="#534AB7">dueño 1:1 suscripcion</text>
+
+    <!-- ConfiguracionSistema → Usuario (actualizado_por) -->
+    <path d="M 137 615 Q 137 560 125 560 Q 125 225 125 225" stroke="#AEADA6" stroke-width="1" stroke-dasharray="3,4" fill="none" marker-end="url(#arr)"/>
+    <text x="143" y="540" font-family="Segoe UI" font-size="9" fill="#888880">actualizado_por?</text>
+
+
+    <!-- ══════════════════ LEYENDA ══════════════════ -->
+    <g transform="translate(20,880)">
+      <rect width="1380" height="44" rx="8" fill="#F5F3EE" stroke="#E8E5DC" stroke-width="1"/>
+      <text x="14" y="16" font-family="Segoe UI" font-size="10.5" font-weight="600" fill="#888880">LEYENDA:</text>
+      <circle cx="86" cy="12" r="4" fill="#1D7A55"/>
+      <text x="94" y="16" font-family="monospace" font-size="10" fill="#1D7A55">🔑 PK</text>
+      <circle cx="146" cy="12" r="4" fill="#185FA5"/>
+      <text x="154" y="16" font-family="monospace" font-size="10" fill="#185FA5">🔗 FK</text>
+      <line x1="208" y1="12" x2="238" y2="12" stroke="#AEADA6" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="244" y="16" font-family="Segoe UI" font-size="10" fill="#888880">relación 1:N</text>
+      <line x1="340" y1="12" x2="370" y2="12" stroke="#1D7A55" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-grn)"/>
+      <text x="376" y="16" font-family="Segoe UI" font-size="10" fill="#888880">relación 1:1 (ML)</text>
+      <line x1="488" y1="12" x2="518" y2="12" stroke="#C05621" stroke-width="1.5" marker-end="url(#arr-ora)"/>
+      <text x="524" y="16" font-family="Segoe UI" font-size="10" fill="#C05621">RanchoGanadero N:M</text>
+      <line x1="660" y1="12" x2="690" y2="12" stroke="#AEADA6" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+      <text x="696" y="16" font-family="Segoe UI" font-size="10" fill="#888880">referencia opcional</text>
+
+      <text x="14" y="36" font-family="Segoe UI" font-size="10" fill="#0E7490">🔔 FCM: fcm_token en Usuario → notificaciones push al detectar alerta clínica o productiva</text>
+      <text x="560" y="36" font-family="Segoe UI" font-size="10" fill="#C05621">🔑 Rancho.codigo_invitacion: ganadero pega el código en POST /ganadero/unirse-rancho</text>
+      <text x="1100" y="36" font-family="Segoe UI" font-size="10" fill="#B8860B">⚠ HistorialProductivo: mock</text>
+    </g>
+  </svg>
+  </div>
+</section>
+
+<p style="font-size:11px;color:#AEADA6;margin-top:32px;">Actualizado · GANAJEC AI · Junio 2026 · 13 entidades (incluye RanchoGanadero)</p>
+
+</body>
+</html>

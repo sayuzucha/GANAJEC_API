@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models import Usuario
-from app.schemas.auth_schema import RegisterRequest, LoginRequest
+from app.schemas.auth_schema import RegisterRequest, LoginRequest, FcmTokenUpdate
 from app.core.security import hash_password, verify_password, create_access_token
 
 
@@ -63,3 +63,22 @@ class AuthController:
             "token_type": "bearer",
             "usuario": usuario.to_dict(),
         }
+
+    @staticmethod
+    def update_fcm_token(db: Session, usuario_id: str, data: FcmTokenUpdate):
+        """
+        Guarda o elimina el FCM token del dispositivo móvil del usuario.
+        La app llama este endpoint inmediatamente después del login.
+        """
+        usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+        if not usuario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No encontrado: usuario no existe",
+            )
+
+        usuario.fcm_token = data.fcm_token
+        db.commit()
+
+        accion = "registrado" if data.fcm_token else "eliminado"
+        return {"mensaje": f"FCM token {accion} correctamente"}
