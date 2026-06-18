@@ -9,9 +9,12 @@ from app.routes.auth_routes import router as auth_router
 from app.routes.ganadero_routes import router as ganadero_router
 from app.routes.dueno_routes import router as dueno_router
 from app.routes.admin_routes import router as admin_router
+from app.core.database import engine, Base
+import app.models  # registra todos los modelos antes de create_all
 
 
 def create_app() -> FastAPI:
+    Base.metadata.create_all(bind=engine)  # crea las tablas si no existen
     app = FastAPI(
         title="GANAJEC AI API",
         description="API REST (MVC + ORM/MySQL) para la plataforma de prediccion "

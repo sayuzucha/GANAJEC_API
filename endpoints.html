@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>GANAJEC AI – Endpoints</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
+
+  header {
+    background: linear-gradient(135deg, #1e3a5f, #0f4c75);
+    padding: 22px 40px;
+    border-bottom: 2px solid #2dd4bf;
+    display: flex; align-items: center; gap: 14px;
+  }
+  header h1 { font-size: 1.5rem; color: #fff; }
+  header .badge { background: #2dd4bf; color: #0f172a; font-size: 0.7rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+
+  .search-bar {
+    padding: 16px 40px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+  }
+  .search-bar input {
+    width: 100%; max-width: 500px;
+    background: #0f172a; border: 1px solid #475569; border-radius: 8px;
+    padding: 8px 14px; color: #e2e8f0; font-size: 0.9rem; outline: none;
+  }
+  .search-bar input:focus { border-color: #2dd4bf; }
+
+  .toc {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    padding: 14px 40px; background: #1e293b; border-bottom: 1px solid #334155;
+  }
+  .toc a {
+    text-decoration: none; font-size: 0.8rem; padding: 5px 14px;
+    border-radius: 999px; border: 1px solid #475569; color: #94a3b8;
+    transition: all .15s;
+  }
+  .toc a:hover { border-color: #2dd4bf; color: #2dd4bf; }
+
+  main { padding: 30px 40px 80px; max-width: 1100px; margin: 0 auto; }
+
+  .section { margin-bottom: 50px; }
+  .section-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 20px; padding-bottom: 10px;
+    border-bottom: 2px solid #334155;
+  }
+  .section-header h2 { font-size: 1.2rem; color: #fff; }
+  .section-icon { font-size: 1.4rem; }
+  .base-path {
+    font-size: 0.78rem; color: #94a3b8; background: #1e293b;
+    padding: 3px 10px; border-radius: 6px; font-family: monospace;
+  }
+  .section-desc { font-size: 0.82rem; color: #64748b; margin-top: 4px; }
+
+  .endpoint {
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 10px; margin-bottom: 12px;
+    overflow: hidden; transition: border-color .15s;
+  }
+  .endpoint:hover { border-color: #475569; }
+
+  .ep-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; cursor: pointer;
+    user-select: none;
+  }
+  .ep-header:hover { background: #263045; }
+
+  .method {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px;
+    padding: 3px 10px; border-radius: 5px; min-width: 58px;
+    text-align: center; font-family: monospace;
+  }
+  .GET    { background: #166534; color: #86efac; }
+  .POST   { background: #1e3a8a; color: #93c5fd; }
+  .PUT    { background: #713f12; color: #fde68a; }
+  .PATCH  { background: #4c1d95; color: #ddd6fe; }
+  .DELETE { background: #7f1d1d; color: #fca5a5; }
+
+  .ep-path {
+    font-family: monospace; font-size: 0.9rem; color: #e2e8f0; flex: 1;
+  }
+  .ep-summary { font-size: 0.82rem; color: #64748b; margin-left: auto; }
+
+  .auth-badge {
+    font-size: 0.68rem; padding: 2px 8px; border-radius: 999px;
+    font-weight: 600;
+  }
+  .auth-req  { background: #1c2d4a; color: #60a5fa; border: 1px solid #2d4d7a; }
+  .auth-pub  { background: #1a3023; color: #4ade80; border: 1px solid #2d5040; }
+  .role-badge {
+    font-size: 0.68rem; padding: 2px 8px; border-radius: 999px;
+    font-weight: 600; border: 1px solid;
+  }
+  .role-admin    { background: #2d1515; color: #f87171; border-color: #5c2626; }
+  .role-dueno    { background: #1a1a2e; color: #a78bfa; border-color: #3b2f6a; }
+  .role-ganadero { background: #172027; color: #34d399; border-color: #1f4835; }
+  .role-any      { background: #1e293b; color: #94a3b8; border-color: #334155; }
+
+  .ep-body {
+    display: none; padding: 16px 20px;
+    border-top: 1px solid #334155; font-size: 0.84rem;
+  }
+  .ep-body.open { display: block; }
+
+  .ep-body h4 { color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; margin-top: 14px; }
+  .ep-body h4:first-child { margin-top: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { text-align: left; color: #64748b; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid #334155; }
+  td { padding: 6px 10px; border-bottom: 1px solid #1e293b; vertical-align: top; }
+  td code { background: #0f172a; padding: 1px 6px; border-radius: 4px; font-size: 0.8rem; color: #2dd4bf; }
+  .required { color: #f87171; font-size: 0.75rem; }
+  .optional { color: #64748b; font-size: 0.75rem; }
+
+  pre {
+    background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+    padding: 12px 14px; font-size: 0.8rem; color: #86efac;
+    overflow-x: auto; white-space: pre; font-family: monospace;
+  }
+
+  .chevron { margin-left: auto; color: #475569; transition: transform .2s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .count {
+    display: inline-block; background: #334155; color: #94a3b8;
+    font-size: 0.7rem; padding: 1px 8px; border-radius: 999px;
+    margin-left: 8px; vertical-align: middle;
+  }
+
+  footer {
+    text-align: center; padding: 20px;
+    color: #334155; font-size: 0.78rem;
+    border-top: 1px solid #1e293b;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐄 GANAJEC AI — Endpoints</h1>
+  <span class="badge">v2.0.0</span>
+</header>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="🔍 Buscar endpoint, método o ruta…" oninput="filtrar()">
+</div>
+
+<div class="toc">
+  <a href="#auth">🔐 Auth</a>
+  <a href="#ganadero">👷 Ganadero</a>
+  <a href="#dueno">🏠 Dueño</a>
+  <a href="#admin">⚙️ Admin</a>
+</div>
+
+<main>
+
+<!-- ══════════════════════════════════════════
+     AUTH
+══════════════════════════════════════════ -->
+<section class="section" id="auth">
+  <div class="section-header">
+    <span class="section-icon">🔐</span>
+    <div>
+      <h2>Autenticación <span class="count">3</span></h2>
+      <div class="base-path">/api/auth</div>
+    </div>
+  </div>
+
+  <!-- POST /register -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/auth/register</span>
+      <span class="auth-badge auth-pub">Público</span>
+      <span class="ep-summary">Registrar nuevo usuario</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td><span class="required">✓</span></td><td>Nombre completo</td></tr>
+        <tr><td><code>email</code></td><td>string</td><td><span class="required">✓</span></td><td>Email único</td></tr>
+        <tr><td><code>password</code></td><td>string</td><td><span class="required">✓</span></td><td>Contraseña en texto plano</td></tr>
+        <tr><td><code>rol</code></td><td>enum</td><td><span class="required">✓</span></td><td><code>ganadero</code> | <code>dueno</code> | <code>admin</code></td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "message": "Usuario registrado exitosamente", "usuario": { "id": "...", "nombre": "...", "email": "...", "rol": "..." } }</pre>
+    </div>
+  </div>
+
+  <!-- POST /login -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/auth/login</span>
+      <span class="auth-badge auth-pub">Público</span>
+      <span class="ep-summary">Obtener JWT</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>email</code></td><td>string</td><td><span class="required">✓</span></td><td>Email registrado</td></tr>
+        <tr><td><code>password</code></td><td>string</td><td><span class="required">✓</span></td><td>Contraseña</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "access_token": "eyJ...", "token_type": "bearer", "usuario": { "id": "...", "rol": "...", ... } }</pre>
+    </div>
+  </div>
+
+  <!-- PUT /fcm-token -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PUT">PUT</span>
+      <span class="ep-path">/api/auth/fcm-token</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-any">Cualquier rol</span>
+      <span class="ep-summary">Actualizar token push Firebase</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>fcm_token</code></td><td>string | null</td><td><span class="required">✓</span></td><td>Token del dispositivo. <code>null</code> para desuscribir.</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "message": "FCM token actualizado" }</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     GANADERO
+══════════════════════════════════════════ -->
+<section class="section" id="ganadero">
+  <div class="section-header">
+    <span class="section-icon">👷</span>
+    <div>
+      <h2>Ganadero <span class="count">12</span></h2>
+      <div class="base-path">/api/ganadero</div>
+      <div class="section-desc">Todos los endpoints requieren JWT con rol <strong>ganadero</strong></div>
+    </div>
+  </div>
+
+  <!-- GET /{ganadero_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/ganadero/{ganadero_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Perfil del ganadero</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Path Params</h4>
+      <table>
+        <tr><th>Param</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>ganadero_id</code></td><td>UUID string</td><td>ID del ganadero</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "nombre": "...", "email": "...", "rol": "ganadero", "activo": true, "ranchos": [...] }</pre>
+    </div>
+  </div>
+
+  <!-- GET /{ganadero_id}/bovinos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/ganadero/{ganadero_id}/bovinos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Listar bovinos a cargo</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Path Params</h4>
+      <table>
+        <tr><th>Param</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>ganadero_id</code></td><td>UUID string</td><td>ID del ganadero</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "nombre": "...", "raza": "...", "categoria": "...", ... }, ... ]</pre>
+    </div>
+  </div>
+
+  <!-- GET /bovinos/{bovino_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/ganadero/bovinos/{bovino_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Detalle de un bovino</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Path Params</h4>
+      <table>
+        <tr><th>Param</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>bovino_id</code></td><td>UUID string</td><td>ID del bovino</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "nombre": "...", "raza": "...", "sexo": "...", "peso_kg": 250.5, ... }</pre>
+    </div>
+  </div>
+
+  <!-- POST /bovinos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/ganadero/bovinos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Registrar nuevo bovino</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>rancho_id</code></td><td>UUID</td><td><span class="required">✓</span></td><td>Rancho al que pertenece</td></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td><span class="required">✓</span></td><td>Nombre del animal</td></tr>
+        <tr><td><code>raza</code></td><td>string</td><td><span class="required">✓</span></td><td>Raza del bovino</td></tr>
+        <tr><td><code>sexo</code></td><td>enum</td><td><span class="required">✓</span></td><td><code>hembra</code> | <code>macho</code></td></tr>
+        <tr><td><code>categoria</code></td><td>enum</td><td><span class="required">✓</span></td><td>vaca | toro | becerro | becerra | novillo | vaquilla | torete</td></tr>
+        <tr><td><code>proposito</code></td><td>enum</td><td><span class="required">✓</span></td><td><code>leche</code> | <code>carne</code> | <code>doble</code> | <code>cria</code></td></tr>
+        <tr><td><code>peso_kg</code></td><td>float</td><td><span class="required">✓</span></td><td>Peso en kg</td></tr>
+        <tr><td><code>fecha_nacimiento</code></td><td>date</td><td><span class="optional">–</span></td><td>ISO 8601</td></tr>
+        <tr><td><code>id_externo</code></td><td>string</td><td><span class="optional">–</span></td><td>ID arete/arete externo</td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "id": "...", "nombre": "...", ... }</pre>
+    </div>
+  </div>
+
+  <!-- PUT /bovinos/{bovino_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PUT">PUT</span>
+      <span class="ep-path">/api/ganadero/bovinos/{bovino_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Actualizar datos de un bovino</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON) — todos opcionales</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td>Nuevo nombre</td></tr>
+        <tr><td><code>peso_kg</code></td><td>float</td><td>Nuevo peso</td></tr>
+        <tr><td><code>categoria</code></td><td>enum</td><td>Nueva categoría</td></tr>
+        <tr><td><code>proposito</code></td><td>enum</td><td>Nuevo propósito</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "nombre": "...", ... }</pre>
+    </div>
+  </div>
+
+  <!-- DELETE /bovinos/{bovino_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method DELETE">DELETE</span>
+      <span class="ep-path">/api/ganadero/bovinos/{bovino_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Eliminar bovino (cascade)</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <p style="color:#94a3b8">Elimina el bovino y en cascada: registros de síntomas, historial productivo y alertas asociadas.</p>
+      <h4>Respuesta 200</h4>
+      <pre>{ "message": "Bovino eliminado exitosamente" }</pre>
+    </div>
+  </div>
+
+  <!-- GET /bovinos/{bovino_id}/predicciones -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/ganadero/bovinos/{bovino_id}/predicciones</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Predicciones de un bovino</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "enfermedad": "...", "confianza": 0.87, "severidad": "moderada", ... } ]</pre>
+    </div>
+  </div>
+
+  <!-- POST /registros-sintomas -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/ganadero/registros-sintomas</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Registrar síntomas → dispara predicción ML + alerta</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>bovino_id</code></td><td>UUID</td><td><span class="required">✓</span></td><td>ID del bovino</td></tr>
+        <tr><td><code>texto_libre</code></td><td>string</td><td><span class="required">✓</span></td><td>Descripción en lenguaje natural (NLP)</td></tr>
+        <tr><td><code>temperatura</code></td><td>float</td><td><span class="optional">–</span></td><td>Temperatura corporal °C</td></tr>
+        <tr><td><code>produccion_leche</code></td><td>float</td><td><span class="optional">–</span></td><td>Litros diarios</td></tr>
+        <tr><td><code>frecuencia_cardiaca</code></td><td>float</td><td><span class="optional">–</span></td><td>lpm</td></tr>
+        <tr><td><code>frecuencia_respiratoria</code></td><td>float</td><td><span class="optional">–</span></td><td>rpm</td></tr>
+        <tr><td><code>condicion_corporal</code></td><td>float</td><td><span class="optional">–</span></td><td>Escala 1.0 – 5.0</td></tr>
+        <tr><td><code>consumo_alimento_kg</code></td><td>float</td><td><span class="optional">–</span></td><td>kg de alimento</td></tr>
+        <tr><td><code>consumo_agua_l</code></td><td>float</td><td><span class="optional">–</span></td><td>Litros de agua</td></tr>
+        <tr><td><code>sintomas_seleccionados</code></td><td>array</td><td><span class="optional">–</span></td><td>Lista de síntomas predefinidos</td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "registro": { ... }, "prediccion": { "enfermedad": "...", "confianza": 0.91, "severidad": "alta" }, "alerta_creada": true }</pre>
+    </div>
+  </div>
+
+  <!-- GET /{ganadero_id}/predicciones -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/ganadero/{ganadero_id}/predicciones</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Historial global de predicciones</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "enfermedad": "...", "bovino": "...", "confianza": 0.85, ... } ]</pre>
+    </div>
+  </div>
+
+  <!-- GET /{ganadero_id}/alertas -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/ganadero/{ganadero_id}/alertas</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Listar alertas del ganadero</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Query Params</h4>
+      <table>
+        <tr><th>Param</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>bovino_id</code></td><td>UUID (opcional)</td><td>Filtrar por bovino específico</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "tipo": "clinica", "severidad": "alta", "mensaje": "...", "leida": false, ... } ]</pre>
+    </div>
+  </div>
+
+  <!-- PATCH /alertas/{alerta_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PATCH">PATCH</span>
+      <span class="ep-path">/api/ganadero/alertas/{alerta_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Marcar alerta como leída</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>leida</code></td><td>boolean</td><td><code>true</code> para marcar leída</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "leida": true, ... }</pre>
+    </div>
+  </div>
+
+  <!-- POST /unirse-rancho -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/ganadero/unirse-rancho</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-ganadero">ganadero</span>
+      <span class="ep-summary">Unirse a rancho con código de invitación</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>codigo_invitacion</code></td><td>string(8)</td><td><span class="required">✓</span></td><td>Código de 8 chars del rancho</td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "message": "Te uniste al rancho exitosamente", "rancho": { "id": "...", "nombre": "..." } }</pre>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════
+     DUEÑO
+══════════════════════════════════════════ -->
+<section class="section" id="dueno">
+  <div class="section-header">
+    <span class="section-icon">🏠</span>
+    <div>
+      <h2>Dueño del Rancho <span class="count">10</span></h2>
+      <div class="base-path">/api/dueno</div>
+      <div class="section-desc">Todos los endpoints requieren JWT con rol <strong>dueno</strong></div>
+    </div>
+  </div>
+
+  <!-- GET /{dueno_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/dueno/{dueno_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Perfil del dueño con ranchos</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "nombre": "...", "ranchos": [ { "id": "...", "nombre": "...", "codigo_invitacion": "..." } ] }</pre>
+    </div>
+  </div>
+
+  <!-- POST /ranchos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/dueno/ranchos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Crear nuevo rancho</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td><span class="required">✓</span></td><td>Nombre del rancho</td></tr>
+        <tr><td><code>municipio</code></td><td>string</td><td><span class="required">✓</span></td><td>Municipio</td></tr>
+        <tr><td><code>estado</code></td><td>string</td><td><span class="required">✓</span></td><td>Estado</td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "id": "...", "nombre": "...", "codigo_invitacion": "GAN4X2BQ", ... }</pre>
+    </div>
+  </div>
+
+  <!-- GET /ranchos/{rancho_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/dueno/ranchos/{rancho_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Dashboard del rancho</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>{ "rancho": { ... }, "total_bovinos": 12, "total_ganaderos": 3, "ganaderos": [...], "bovinos": [...] }</pre>
+    </div>
+  </div>
+
+  <!-- PUT /ranchos/{rancho_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PUT">PUT</span>
+      <span class="ep-path">/api/dueno/ranchos/{rancho_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Actualizar datos del rancho</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON) — todos opcionales</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td>Nuevo nombre</td></tr>
+        <tr><td><code>municipio</code></td><td>string</td><td>Nuevo municipio</td></tr>
+        <tr><td><code>estado</code></td><td>string</td><td>Nuevo estado</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- GET /ranchos/{rancho_id}/ganaderos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/dueno/ranchos/{rancho_id}/ganaderos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Listar ganaderos asignados</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "nombre": "...", "email": "...", "activo": true } ]</pre>
+    </div>
+  </div>
+
+  <!-- POST /ranchos/{rancho_id}/ganaderos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/dueno/ranchos/{rancho_id}/ganaderos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Asignar ganadero existente al rancho</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>ganadero_id</code></td><td>UUID</td><td><span class="required">✓</span></td><td>ID del ganadero ya registrado</td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "message": "Ganadero asignado al rancho exitosamente" }</pre>
+    </div>
+  </div>
+
+  <!-- GET /ranchos/{rancho_id}/bovinos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/dueno/ranchos/{rancho_id}/bovinos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Listar todos los bovinos del rancho</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "nombre": "...", "raza": "...", "ganadero_id": "..." }, ... ]</pre>
+    </div>
+  </div>
+
+  <!-- POST /ganaderos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method POST">POST</span>
+      <span class="ep-path">/api/dueno/ganaderos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Registrar ganadero nuevo</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td><span class="required">✓</span></td><td>Nombre del ganadero</td></tr>
+        <tr><td><code>email</code></td><td>string</td><td><span class="required">✓</span></td><td>Email único</td></tr>
+        <tr><td><code>password</code></td><td>string</td><td><span class="required">✓</span></td><td>Contraseña inicial</td></tr>
+        <tr><td><code>rancho_id</code></td><td>UUID</td><td><span class="optional">–</span></td><td>Asignar directamente a un rancho</td></tr>
+      </table>
+      <h4>Respuesta 201</h4>
+      <pre>{ "id": "...", "nombre": "...", "email": "...", "rol": "ganadero" }</pre>
+    </div>
+  </div>
+
+  <!-- PUT /ganaderos/{ganadero_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PUT">PUT</span>
+      <span class="ep-path">/api/dueno/ganaderos/{ganadero_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Actualizar / desactivar ganadero</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON) — todos opcionales</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>nombre</code></td><td>string</td><td>Nuevo nombre</td></tr>
+        <tr><td><code>activo</code></td><td>boolean</td><td><code>false</code> para desactivar</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- GET /{dueno_id}/suscripcion -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/dueno/{dueno_id}/suscripcion</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-dueno">dueno</span>
+      <span class="ep-summary">Ver plan/suscripción actual</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "activa": true, "inicio": "2025-01-01", "fin": null, "plan": { "nombre": "Pro", "limite_bovinos": 200, ... } }</pre>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════
+     ADMIN
+══════════════════════════════════════════ -->
+<section class="section" id="admin">
+  <div class="section-header">
+    <span class="section-icon">⚙️</span>
+    <div>
+      <h2>Administrador <span class="count">7</span></h2>
+      <div class="base-path">/api/admin</div>
+      <div class="section-desc">Todos los endpoints requieren JWT con rol <strong>admin</strong></div>
+    </div>
+  </div>
+
+  <!-- GET /{admin_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/admin/{admin_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Perfil del admin</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>{ "id": "...", "nombre": "...", "email": "...", "rol": "admin" }</pre>
+    </div>
+  </div>
+
+  <!-- GET /usuarios -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/admin/usuarios</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Listar todos los usuarios</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Query Params</h4>
+      <table>
+        <tr><th>Param</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>rol</code></td><td>string (opcional)</td><td>Filtrar por <code>ganadero</code> | <code>dueno</code> | <code>admin</code></td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "nombre": "...", "email": "...", "rol": "...", "activo": true }, ... ]</pre>
+    </div>
+  </div>
+
+  <!-- PUT /usuarios/{usuario_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PUT">PUT</span>
+      <span class="ep-path">/api/admin/usuarios/{usuario_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Actualizar estado o rol de usuario</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Body (JSON) — todos opcionales</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>activo</code></td><td>boolean</td><td>Activar/desactivar cuenta</td></tr>
+        <tr><td><code>rol</code></td><td>enum</td><td>Cambiar rol del usuario</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- DELETE /usuarios/{usuario_id} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method DELETE">DELETE</span>
+      <span class="ep-path">/api/admin/usuarios/{usuario_id}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Eliminar usuario del sistema</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>{ "message": "Usuario eliminado exitosamente" }</pre>
+    </div>
+  </div>
+
+  <!-- GET /ranchos -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/admin/ranchos</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Listar todos los ranchos del sistema</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>[ { "id": "...", "nombre": "...", "municipio": "...", "dueno_id": "...", "total_bovinos": 5 }, ... ]</pre>
+    </div>
+  </div>
+
+  <!-- GET /sistema/estado -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method GET">GET</span>
+      <span class="ep-path">/api/admin/sistema/estado</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Estado del sistema: stats, logs, modelos ML</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Respuesta 200</h4>
+      <pre>{
+  "estadisticas": { "total_usuarios": 42, "total_ranchos": 8, "total_bovinos": 320 },
+  "modelos_ml": { "random_forest": "cargado", "isolation_forest": "cargado" },
+  "logs_recientes": [ { "accion": "...", "ip": "...", "creado_en": "..." } ]
+}</pre>
+    </div>
+  </div>
+
+  <!-- PUT /configuracion/{clave} -->
+  <div class="endpoint">
+    <div class="ep-header" onclick="toggle(this)">
+      <span class="method PUT">PUT</span>
+      <span class="ep-path">/api/admin/configuracion/{clave}</span>
+      <span class="auth-badge auth-req">JWT</span>
+      <span class="role-badge role-admin">admin</span>
+      <span class="ep-summary">Actualizar valor de configuración del sistema</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="ep-body">
+      <h4>Path Params</h4>
+      <table>
+        <tr><th>Param</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>clave</code></td><td>string</td><td>Clave del parámetro de configuración</td></tr>
+      </table>
+      <h4>Body (JSON)</h4>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+        <tr><td><code>valor</code></td><td>string</td><td><span class="required">✓</span></td><td>Nuevo valor</td></tr>
+        <tr><td><code>descripcion</code></td><td>string</td><td><span class="optional">–</span></td><td>Descripción opcional</td></tr>
+      </table>
+      <h4>Respuesta 200</h4>
+      <pre>{ "clave": "...", "valor": "...", "actualizado_por": "...", "actualizado_en": "..." }</pre>
+    </div>
+  </div>
+
+</section>
+
+</main>
+
+<footer>GANAJEC AI API v2.0.0 — FastAPI + MySQL + ML (Random Forest + Isolation Forest) — 2025</footer>
+
+<script>
+  function toggle(header) {
+    const body = header.nextElementSibling;
+    const chevron = header.querySelector('.chevron');
+    body.classList.toggle('open');
+    chevron.classList.toggle('open');
+  }
+
+  function filtrar() {
+    const q = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('.endpoint').forEach(ep => {
+      const text = ep.textContent.toLowerCase();
+      ep.style.display = text.includes(q) ? '' : 'none';
+    });
+    document.querySelectorAll('.section').forEach(sec => {
+      const visible = [...sec.querySelectorAll('.endpoint')].some(e => e.style.display !== 'none');
+      sec.style.display = visible ? '' : 'none';
+    });
+  }
+</script>
+</body>
+</html>
