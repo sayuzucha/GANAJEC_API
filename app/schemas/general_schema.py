@@ -32,6 +32,21 @@ class GanaderoUpdate(BaseModel):
     activo: Optional[bool] = None
 
 
+# ── Veterinario ───────────────────────────────────────
+class VeterinarioCreate(BaseModel):
+    nombre:       str            = Field(..., min_length=2, examples=["Dr. Juan Pérez"])
+    telefono:     str            = Field(..., min_length=7, examples=["9611234567"])
+    especialidad: Optional[str]  = Field(None, examples=["Medicina bovina"])
+    notas:        Optional[str]  = Field(None, examples=["Disponible lunes y miércoles"])
+
+
+class VeterinarioUpdate(BaseModel):
+    nombre:       Optional[str] = None
+    telefono:     Optional[str] = None
+    especialidad: Optional[str] = None
+    notas:        Optional[str] = None
+
+
 # ── Administrador ─────────────────────────────────────
 class UsuarioUpdate(BaseModel):
     activo: Optional[bool] = None

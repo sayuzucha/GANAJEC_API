@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 import datetime
 
-from app.models import Usuario, Bovino, Rancho, RanchoGanadero, RegistroSintoma, Prediccion, Alerta
+from app.models import Usuario, Bovino, Rancho, RegistroSintoma, Prediccion, Alerta
 from app.schemas.ganadero_schema import BovinoCreate, BovinoUpdate, RegistroSintomaCreate, AlertaUpdate, UnirseRanchoRequest
 from app.ml import predictor
 from app.ml import nlp
@@ -36,7 +36,12 @@ class GanaderoController:
             )
 
         total_bovinos = db.query(Bovino).filter(Bovino.ganadero_id == ganadero_id).count()
-        return {**ganadero.to_dict(), "total_bovinos": total_bovinos}
+        rancho = db.query(Rancho).filter(Rancho.id == ganadero.rancho_id).first() if ganadero.rancho_id else None
+        return {
+            **ganadero.to_dict(),
+            "total_bovinos": total_bovinos,
+            "rancho": rancho.to_dict() if rancho else None,
+        }
 
     # 2. GET /api/ganadero/{ganadero_id}/bovinos
     @staticmethod
@@ -71,11 +76,18 @@ class GanaderoController:
     # 4. POST /api/ganadero/bovinos
     @staticmethod
     def crear_bovino(db: Session, ganadero_id: str, data: BovinoCreate):
-        rancho = db.query(Rancho).filter(Rancho.id == data.rancho_id).first()
+        ganadero = db.query(Usuario).filter(Usuario.id == ganadero_id).first()
+        if not ganadero or not ganadero.rancho_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El ganadero no está asignado a ningún rancho. Únete a un rancho primero.",
+            )
+
+        rancho = db.query(Rancho).filter(Rancho.id == ganadero.rancho_id).first()
         if not rancho:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No encontrado: el rancho con id '{data.rancho_id}' no existe",
+                detail="No encontrado: el rancho asignado al ganadero no existe",
             )
 
         if data.id_externo:
@@ -87,7 +99,7 @@ class GanaderoController:
                 )
 
         nuevo = Bovino(
-            rancho_id=data.rancho_id,
+            rancho_id=ganadero.rancho_id,
             ganadero_id=ganadero_id,
             nombre=data.nombre,
             raza=data.raza,
@@ -413,24 +425,23 @@ class GanaderoController:
                 detail="Código inválido: no existe ningún rancho con ese código de invitación",
             )
 
-        # Verificar que no esté ya asignado
-        ya_asignado = db.query(RanchoGanadero).filter(
-            RanchoGanadero.rancho_id == rancho.id,
-            RanchoGanadero.ganadero_id == ganadero_id,
-        ).first()
-        if ya_asignado:
+        ganadero = db.query(Usuario).filter(Usuario.id == ganadero_id).first()
+
+        # Verificar que no esté ya asignado al mismo rancho
+        if ganadero.rancho_id == rancho.id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Conflicto: ya estás asignado al rancho '{rancho.nombre}'",
             )
 
-        asignacion = RanchoGanadero(rancho_id=rancho.id, ganadero_id=ganadero_id)
-        db.add(asignacion)
+        # Asignar directamente (reemplaza si tenía otro rancho)
+        ganadero.rancho_id = rancho.id
         db.commit()
+        db.refresh(ganadero)
 
         return {
             "mensaje": f"Te uniste al rancho '{rancho.nombre}' exitosamente",
-            "rancho": rancho.to_dict(),   # sin include_codigo: ganadero no necesita ver el código
+            "rancho": rancho.to_dict(),
         }
 
     # 9. GET /api/ganadero/alertas

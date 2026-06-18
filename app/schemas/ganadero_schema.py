@@ -4,7 +4,6 @@ from datetime import date
 
 
 class BovinoCreate(BaseModel):
-    rancho_id: str = Field(..., examples=["uuid-del-rancho"])
     nombre: str = Field(..., examples=["Lupita"])
     raza: str = Field(..., examples=["Holstein"])
     sexo: str = Field(..., pattern="^(hembra|macho)$")
