@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 import datetime
 
 from app.models import Usuario, Bovino, Rancho, RegistroSintoma, Prediccion, Alerta
-from app.schemas.ganadero_schema import BovinoCreate, BovinoUpdate, RegistroSintomaCreate, AlertaUpdate, UnirseRanchoRequest
+from app.schemas.ganadero_schema import BovinoCreate, BovinoUpdate, RegistroSintomaCreate, AlertaUpdate, UnirseRanchoRequest, GanaderoPerfilUpdate
+from app.core.security import hash_password
 from app.ml import predictor
 from app.ml import nlp
 from app.services import fcm_service
@@ -40,7 +41,7 @@ class GanaderoController:
         return {
             **ganadero.to_dict(),
             "total_bovinos": total_bovinos,
-            "rancho": rancho.to_dict() if rancho else None,
+            "rancho": rancho.to_dict(include_dueno_nombre=True) if rancho else None,
         }
 
     # 2. GET /api/ganadero/{ganadero_id}/bovinos
@@ -475,3 +476,127 @@ class GanaderoController:
         db.commit()
         db.refresh(alerta)
         return alerta.to_dict()
+
+    # 11. GET /api/ganadero/bovinos/{bovino_id}/graficas
+    @staticmethod
+    def graficas_bovino(db: Session, bovino_id: str):
+        """
+        Series de tiempo del bovino, ordenadas por fecha ascendente.
+        Cada lista contiene {fecha, valor} — los None se omiten para
+        que la app no dibuje puntos vacíos en la gráfica.
+        """
+        bovino = db.query(Bovino).filter(Bovino.id == bovino_id).first()
+        if not bovino:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el bovino con id '{bovino_id}' no existe",
+            )
+
+        registros = (
+            db.query(RegistroSintoma)
+            .filter(RegistroSintoma.bovino_id == bovino_id)
+            .order_by(RegistroSintoma.registrado_en.asc())
+            .all()
+        )
+
+        temperatura, leche, alimento, agua, fc, fr, cc = [], [], [], [], [], [], []
+
+        for r in registros:
+            fecha = r.registrado_en.strftime("%Y-%m-%d") if r.registrado_en else None
+            if not fecha:
+                continue
+            if r.temperatura        is not None: temperatura.append({"fecha": fecha, "valor": r.temperatura})
+            if r.produccion_leche   is not None: leche.append({"fecha": fecha, "valor": r.produccion_leche})
+            if r.consumo_alimento_kg is not None: alimento.append({"fecha": fecha, "valor": r.consumo_alimento_kg})
+            if r.consumo_agua_l     is not None: agua.append({"fecha": fecha, "valor": r.consumo_agua_l})
+            if r.frecuencia_cardiaca     is not None: fc.append({"fecha": fecha, "valor": r.frecuencia_cardiaca})
+            if r.frecuencia_respiratoria is not None: fr.append({"fecha": fecha, "valor": r.frecuencia_respiratoria})
+            if r.condicion_corporal      is not None: cc.append({"fecha": fecha, "valor": r.condicion_corporal})
+
+        return {
+            "bovino_id": bovino_id,
+            "bovino_nombre": bovino.nombre,
+            "total_registros": len(registros),
+            "graficas": {
+                "temperatura_corporal":    temperatura,
+                "produccion_leche_litros": leche,
+                "consumo_alimento_kg":     alimento,
+                "consumo_agua_litros":     agua,
+                "frecuencia_cardiaca":     fc,
+                "frecuencia_respiratoria": fr,
+                "condicion_corporal":      cc,
+            },
+        }
+
+    # 12. GET /api/ganadero/colegas
+    @staticmethod
+    def listar_colegas(db: Session, ganadero_id: str):
+        """Devuelve los otros ganaderos asignados al mismo rancho."""
+        ganadero = db.query(Usuario).filter(
+            Usuario.id == ganadero_id, Usuario.rol == "ganadero"
+        ).first()
+        if not ganadero:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el ganadero con id '{ganadero_id}' no existe",
+            )
+        if not ganadero.rancho_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No estás asignado a ningún rancho",
+            )
+
+        colegas = db.query(Usuario).filter(
+            Usuario.rancho_id == ganadero.rancho_id,
+            Usuario.rol == "ganadero",
+            Usuario.id != ganadero_id,
+        ).all()
+
+        rancho = db.query(Rancho).filter(Rancho.id == ganadero.rancho_id).first()
+        return {
+            "rancho": rancho.nombre if rancho else None,
+            "total": len(colegas),
+            "ganaderos": [g.to_dict(include_email=False) for g in colegas],
+        }
+
+    # 12. PUT /api/ganadero/{ganadero_id}/perfil
+    @staticmethod
+    def actualizar_perfil(db: Session, ganadero_id: str, data: GanaderoPerfilUpdate):
+        """El ganadero actualiza su propio nombre, email y/o contraseña."""
+        ganadero = db.query(Usuario).filter(
+            Usuario.id == ganadero_id, Usuario.rol == "ganadero"
+        ).first()
+        if not ganadero:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el ganadero con id '{ganadero_id}' no existe",
+            )
+
+        updates = data.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Solicitud invalida: no se enviaron campos para actualizar",
+            )
+
+        if "email" in updates:
+            existe = db.query(Usuario).filter(
+                Usuario.email == updates["email"],
+                Usuario.id != ganadero_id,
+            ).first()
+            if existe:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Conflicto: ya existe un usuario con el correo '{updates['email']}'",
+                )
+            ganadero.email = updates["email"]
+
+        if "nombre" in updates:
+            ganadero.nombre = updates["nombre"]
+
+        if "password" in updates:
+            ganadero.password_hash = hash_password(updates["password"])
+
+        db.commit()
+        db.refresh(ganadero)
+        return ganadero.to_dict()

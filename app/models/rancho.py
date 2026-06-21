@@ -35,7 +35,7 @@ class Rancho(Base, UUIDMixin):
     bovinos      = relationship("Bovino",       back_populates="rancho")
     veterinarios = relationship("Veterinario",  back_populates="rancho",       cascade="all, delete-orphan")
 
-    def to_dict(self, include_codigo=False):
+    def to_dict(self, include_codigo=False, include_dueno_nombre=False):
         data = {
             "id":              self.id,
             "nombre":          self.nombre,
@@ -46,7 +46,8 @@ class Rancho(Base, UUIDMixin):
             "total_ganaderos": len(self.ganaderos) if self.ganaderos else 0,
             "creado_en":       self.creado_en.isoformat() if self.creado_en else None,
         }
-        # El código solo se devuelve cuando el dueño lo solicita explícitamente.
+        if include_dueno_nombre:
+            data["dueno_nombre"] = self.dueno.nombre if self.dueno else None
         if include_codigo:
             data["codigo_invitacion"] = self.codigo_invitacion
         return data

@@ -1,6 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func
 from app.models import Usuario, Rancho, Bovino, Suscripcion, Veterinario
 from app.models.registro_sintoma import RegistroSintoma, Prediccion
 from app.models.alerta import Alerta
@@ -144,10 +145,25 @@ class DuenoController:
             Usuario.rol == "ganadero",
         ).all()
 
+        # Contar bovinos por ganadero en una sola query
+        bovino_counts = {}
+        if ganaderos:
+            ganadero_ids = [g.id for g in ganaderos]
+            counts = (
+                db.query(Bovino.ganadero_id, func.count(Bovino.id))
+                .filter(Bovino.ganadero_id.in_(ganadero_ids))
+                .group_by(Bovino.ganadero_id)
+                .all()
+            )
+            bovino_counts = {gid: cnt for gid, cnt in counts}
+
         return {
             "rancho": rancho.nombre,
             "total": len(ganaderos),
-            "ganaderos": [g.to_dict() for g in ganaderos],
+            "ganaderos": [
+                {**g.to_dict(), "total_bovinos": bovino_counts.get(g.id, 0)}
+                for g in ganaderos
+            ],
         }
 
     # 5. POST /api/dueno/ganaderos — crea ganadero nuevo y lo asigna al rancho
@@ -460,6 +476,268 @@ class DuenoController:
         db.delete(vet)
         db.commit()
         return {"mensaje": f"Veterinario '{nombre}' eliminado correctamente"}
+
+    # ── VISTAS GLOBALES (todos los ranchos del dueño) ────────────────────
+
+    # GET /api/dueno/bovinos
+    @staticmethod
+    def todos_bovinos(db: Session, dueno_id: str):
+        """Todos los bovinos de todos los ranchos del dueño, con rancho y ganadero."""
+        ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
+        if not ranchos:
+            return {"total_ranchos": 0, "total_bovinos": 0, "bovinos": []}
+
+        rancho_map = {r.id: r.nombre for r in ranchos}
+        rancho_ids = list(rancho_map.keys())
+
+        bovinos = db.query(Bovino).filter(Bovino.rancho_id.in_(rancho_ids)).all()
+
+        ganadero_ids = list({b.ganadero_id for b in bovinos})
+        ganadero_map = {}
+        if ganadero_ids:
+            ganaderos = db.query(Usuario).filter(Usuario.id.in_(ganadero_ids)).all()
+            ganadero_map = {g.id: g.nombre for g in ganaderos}
+
+        resultado = []
+        for b in bovinos:
+            item = b.to_dict()
+            item["rancho_nombre"] = rancho_map.get(b.rancho_id)
+            item["ganadero_nombre"] = ganadero_map.get(b.ganadero_id)
+            resultado.append(item)
+
+        return {
+            "total_ranchos": len(ranchos),
+            "total_bovinos": len(bovinos),
+            "bovinos": resultado,
+        }
+
+    # GET /api/dueno/predicciones
+    @staticmethod
+    def todas_predicciones(db: Session, dueno_id: str):
+        """Todas las predicciones ML de los bovinos de sus ranchos."""
+        ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
+        if not ranchos:
+            return {"total": 0, "predicciones": []}
+
+        rancho_map = {r.id: r.nombre for r in ranchos}
+        rancho_ids = list(rancho_map.keys())
+
+        bovinos = db.query(Bovino).filter(Bovino.rancho_id.in_(rancho_ids)).all()
+        if not bovinos:
+            return {"total": 0, "predicciones": []}
+
+        bovino_map = {b.id: b for b in bovinos}
+        bovino_ids = list(bovino_map.keys())
+
+        ganadero_ids = list({b.ganadero_id for b in bovinos})
+        ganadero_map = {}
+        if ganadero_ids:
+            ganaderos = db.query(Usuario).filter(Usuario.id.in_(ganadero_ids)).all()
+            ganadero_map = {g.id: g.nombre for g in ganaderos}
+
+        registros = (
+            db.query(RegistroSintoma)
+            .filter(RegistroSintoma.bovino_id.in_(bovino_ids))
+            .order_by(RegistroSintoma.registrado_en.desc())
+            .all()
+        )
+
+        resultado = []
+        for r in registros:
+            if not r.prediccion:
+                continue
+            bovino = bovino_map.get(r.bovino_id)
+            item = r.prediccion.to_dict()
+            item["registrado_en"] = r.registrado_en.isoformat() if r.registrado_en else None
+            item["texto_libre"] = r.texto_libre
+            item["bovino_id"] = r.bovino_id
+            item["bovino_nombre"] = bovino.nombre if bovino else None
+            item["ganadero_nombre"] = ganadero_map.get(bovino.ganadero_id) if bovino else None
+            item["rancho_nombre"] = rancho_map.get(bovino.rancho_id) if bovino else None
+            resultado.append(item)
+
+        return {"total": len(resultado), "predicciones": resultado}
+
+    # GET /api/dueno/historial
+    @staticmethod
+    def historial_bovinos(db: Session, dueno_id: str):
+        """
+        Historial de registros de síntomas de cada bovino,
+        agrupados por rancho → ganadero → bovino.
+        """
+        ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
+        if not ranchos:
+            return {"ranchos": []}
+
+        rancho_ids = [r.id for r in ranchos]
+        bovinos = db.query(Bovino).filter(Bovino.rancho_id.in_(rancho_ids)).all()
+
+        ganadero_ids = list({b.ganadero_id for b in bovinos})
+        ganadero_map = {}
+        if ganadero_ids:
+            ganaderos = db.query(Usuario).filter(Usuario.id.in_(ganadero_ids)).all()
+            ganadero_map = {g.id: g for g in ganaderos}
+
+        bovino_ids = [b.id for b in bovinos]
+        registros = (
+            db.query(RegistroSintoma)
+            .filter(RegistroSintoma.bovino_id.in_(bovino_ids))
+            .order_by(RegistroSintoma.registrado_en.desc())
+            .all()
+        )
+
+        # registros indexados por bovino_id
+        registros_por_bovino: dict = {}
+        for r in registros:
+            registros_por_bovino.setdefault(r.bovino_id, []).append(r)
+
+        # bovinos indexados por rancho_id
+        bovinos_por_rancho: dict = {}
+        for b in bovinos:
+            bovinos_por_rancho.setdefault(b.rancho_id, []).append(b)
+
+        resultado = []
+        for rancho in ranchos:
+            bovinos_rancho = bovinos_por_rancho.get(rancho.id, [])
+            # agrupar por ganadero
+            por_ganadero: dict = {}
+            for b in bovinos_rancho:
+                por_ganadero.setdefault(b.ganadero_id, []).append(b)
+
+            ganaderos_lista = []
+            for gid, bov_list in por_ganadero.items():
+                ganadero = ganadero_map.get(gid)
+                bovinos_detalle = []
+                for b in bov_list:
+                    regs = registros_por_bovino.get(b.id, [])
+                    bovinos_detalle.append({
+                        **b.to_dict(),
+                        "total_registros": len(regs),
+                        "registros": [
+                            {**r.to_dict(include_prediccion=True)}
+                            for r in regs
+                        ],
+                    })
+                ganaderos_lista.append({
+                    "ganadero_id": gid,
+                    "ganadero_nombre": ganadero.nombre if ganadero else None,
+                    "total_bovinos": len(bov_list),
+                    "bovinos": bovinos_detalle,
+                })
+
+            resultado.append({
+                "rancho_id": rancho.id,
+                "rancho_nombre": rancho.nombre,
+                "total_ganaderos": len(ganaderos_lista),
+                "ganaderos": ganaderos_lista,
+            })
+
+        return {"total_ranchos": len(resultado), "ranchos": resultado}
+
+    # GET /api/dueno/reportes
+    @staticmethod
+    def reportes(db: Session, dueno_id: str):
+        """
+        Gráficas generales (todos los ranchos del dueño) + detalle por bovino.
+        """
+        ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
+        if not ranchos:
+            return {
+                "general": {
+                    "bovinos_por_categoria": {},
+                    "alertas_por_severidad": {"baja": 0, "media": 0, "alta": 0},
+                    "predicciones_por_mes": [],
+                },
+                "por_bovino": [],
+            }
+
+        rancho_map = {r.id: r.nombre for r in ranchos}
+        rancho_ids = list(rancho_map.keys())
+        bovinos = db.query(Bovino).filter(Bovino.rancho_id.in_(rancho_ids)).all()
+        bovino_ids = [b.id for b in bovinos]
+        bovino_map = {b.id: b for b in bovinos}
+
+        ganadero_ids = list({b.ganadero_id for b in bovinos})
+        ganadero_map = {}
+        if ganadero_ids:
+            ganaderos = db.query(Usuario).filter(Usuario.id.in_(ganadero_ids)).all()
+            ganadero_map = {g.id: g.nombre for g in ganaderos}
+
+        # ── General: bovinos por categoría ──
+        por_categoria: dict = {}
+        for b in bovinos:
+            por_categoria[b.categoria] = por_categoria.get(b.categoria, 0) + 1
+
+        # ── General: alertas por severidad ──
+        alertas_data = {"baja": 0, "media": 0, "alta": 0}
+        if bovino_ids:
+            alertas = db.query(Alerta).filter(Alerta.bovino_id.in_(bovino_ids)).all()
+            for a in alertas:
+                alertas_data[a.severidad] = alertas_data.get(a.severidad, 0) + 1
+
+        # ── General: predicciones del último mes ──
+        hace_30 = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+        predicciones_mes = []
+        registros_all = []
+        if bovino_ids:
+            registros_all = (
+                db.query(RegistroSintoma)
+                .filter(RegistroSintoma.bovino_id.in_(bovino_ids))
+                .order_by(RegistroSintoma.registrado_en.asc())
+                .all()
+            )
+            for r in registros_all:
+                if r.prediccion and r.registrado_en and r.registrado_en >= hace_30:
+                    bovino = bovino_map.get(r.bovino_id)
+                    predicciones_mes.append({
+                        "fecha": r.registrado_en.strftime("%Y-%m-%d"),
+                        "enfermedad": r.prediccion.enfermedad,
+                        "severidad": r.prediccion.severidad,
+                        "bovino_nombre": bovino.nombre if bovino else None,
+                        "ganadero_nombre": ganadero_map.get(bovino.ganadero_id) if bovino else None,
+                        "rancho_nombre": rancho_map.get(bovino.rancho_id) if bovino else None,
+                    })
+
+        # ── Por bovino: historial de predicciones + severidad ──
+        registros_por_bovino: dict = {}
+        for r in registros_all:
+            registros_por_bovino.setdefault(r.bovino_id, []).append(r)
+
+        por_bovino = []
+        for b in bovinos:
+            regs = registros_por_bovino.get(b.id, [])
+            preds = [r.prediccion for r in regs if r.prediccion]
+            sev_count = {"leve": 0, "moderada": 0, "alta": 0}
+            for p in preds:
+                sev_count[p.severidad] = sev_count.get(p.severidad, 0) + 1
+            por_bovino.append({
+                "bovino_id": b.id,
+                "bovino_nombre": b.nombre,
+                "categoria": b.categoria,
+                "ganadero_nombre": ganadero_map.get(b.ganadero_id),
+                "rancho_nombre": rancho_map.get(b.rancho_id),
+                "total_registros": len(regs),
+                "total_predicciones": len(preds),
+                "severidad_distribucion": sev_count,
+                "predicciones": [
+                    {
+                        "fecha": r.registrado_en.strftime("%Y-%m-%d") if r.registrado_en else None,
+                        "enfermedad": r.prediccion.enfermedad,
+                        "confianza": r.prediccion.confianza,
+                        "severidad": r.prediccion.severidad,
+                    }
+                    for r in regs if r.prediccion
+                ],
+            })
+
+        return {
+            "general": {
+                "bovinos_por_categoria": por_categoria,
+                "alertas_por_severidad": alertas_data,
+                "predicciones_por_mes": predicciones_mes,
+            },
+            "por_bovino": por_bovino,
+        }
 
     # 8. GET /api/dueno/{dueno_id}/suscripcion
     @staticmethod

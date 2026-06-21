@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.controllers.dueno_controller import DuenoController
+from app.controllers.ganadero_controller import GanaderoController
 from app.schemas.general_schema import (
     RanchoCreate, RanchoUpdate,
     GanaderoCreate, GanaderoUpdate,
@@ -102,7 +103,13 @@ async def bovinos_de_ganadero(ganadero_id: str, db: Session = Depends(get_db),
     return DuenoController.bovinos_de_ganadero(db, ganadero_id)
 
 
-# ── BOVINO: detalle completo ──────────────────────────────────
+# ── BOVINO: detalle completo + gráficas ──────────────────────
+
+@router.get("/bovinos/{bovino_id}/graficas")
+async def graficas_bovino(bovino_id: str, db: Session = Depends(get_db),
+                           usuario=Depends(dueno_only)):
+    return GanaderoController.graficas_bovino(db, bovino_id)
+
 
 @router.get("/bovinos/{bovino_id}")
 async def detalle_bovino(bovino_id: str, db: Session = Depends(get_db),
@@ -122,6 +129,28 @@ async def registrar_ganadero(data: GanaderoCreate, db: Session = Depends(get_db)
 async def actualizar_ganadero(ganadero_id: str, data: GanaderoUpdate,
                               db: Session = Depends(get_db), usuario=Depends(dueno_only)):
     return DuenoController.actualizar_ganadero(db, ganadero_id, data)
+
+
+# ── VISTAS GLOBALES (todos los ranchos del dueño) ────────────
+
+@router.get("/bovinos")
+async def todos_bovinos(db: Session = Depends(get_db), usuario=Depends(dueno_only)):
+    return DuenoController.todos_bovinos(db, usuario.id)
+
+
+@router.get("/predicciones")
+async def todas_predicciones(db: Session = Depends(get_db), usuario=Depends(dueno_only)):
+    return DuenoController.todas_predicciones(db, usuario.id)
+
+
+@router.get("/historial")
+async def historial_bovinos(db: Session = Depends(get_db), usuario=Depends(dueno_only)):
+    return DuenoController.historial_bovinos(db, usuario.id)
+
+
+@router.get("/reportes")
+async def reportes(db: Session = Depends(get_db), usuario=Depends(dueno_only)):
+    return DuenoController.reportes(db, usuario.id)
 
 
 # ── SUSCRIPCIÓN / PERFIL — catch-alls al final ───────────────

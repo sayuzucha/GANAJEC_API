@@ -7,7 +7,7 @@ from app.controllers.ganadero_controller import GanaderoController
 from app.schemas.ganadero_schema import (
     BovinoCreate, BovinoUpdate,
     RegistroSintomaCreate, AlertaUpdate,
-    UnirseRanchoRequest,
+    UnirseRanchoRequest, GanaderoPerfilUpdate,
 )
 
 router = APIRouter()
@@ -52,6 +52,13 @@ async def obtener_predicciones(bovino_id: str, db: Session = Depends(get_db),
     return GanaderoController.obtener_predicciones(db, bovino_id)
 
 
+# 11. Gráficas de series de tiempo de un bovino
+@router.get("/bovinos/{bovino_id}/graficas")
+async def graficas_bovino(bovino_id: str, db: Session = Depends(get_db),
+                           usuario=Depends(ganadero_only)):
+    return GanaderoController.graficas_bovino(db, bovino_id)
+
+
 # 8. Registrar nota de campo / síntomas
 @router.post("/registros-sintomas", status_code=201)
 async def registrar_sintoma(data: RegistroSintomaCreate, db: Session = Depends(get_db),
@@ -71,6 +78,12 @@ async def marcar_alerta(alerta_id: str, data: AlertaUpdate, db: Session = Depend
 async def unirse_rancho(data: UnirseRanchoRequest, db: Session = Depends(get_db),
                          usuario=Depends(ganadero_only)):
     return GanaderoController.unirse_rancho(db, usuario.id, data)
+
+
+# 11. Listar ganaderos colegas del mismo rancho
+@router.get("/colegas")
+async def listar_colegas(db: Session = Depends(get_db), usuario=Depends(ganadero_only)):
+    return GanaderoController.listar_colegas(db, usuario.id)
 
 
 # ── Rutas con /{ganadero_id} — AL FINAL ──────────────────────
@@ -94,6 +107,13 @@ async def listar_predicciones(ganadero_id: str, db: Session = Depends(get_db),
 async def listar_alertas(ganadero_id: str, bovino_id: str = None,
                           db: Session = Depends(get_db), usuario=Depends(ganadero_only)):
     return GanaderoController.listar_alertas(db, ganadero_id, bovino_id)
+
+
+# 12. Actualizar perfil propio (nombre, email, password)
+@router.put("/{ganadero_id}/perfil")
+async def actualizar_perfil(ganadero_id: str, data: GanaderoPerfilUpdate,
+                             db: Session = Depends(get_db), usuario=Depends(ganadero_only)):
+    return GanaderoController.actualizar_perfil(db, ganadero_id, data)
 
 
 # 1. Perfil del ganadero — DEBE IR AL FINAL (catch-all de 1 segmento)

@@ -1,6 +1,12 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import date
+
+
+class GanaderoPerfilUpdate(BaseModel):
+    nombre:   Optional[str]      = Field(None, min_length=3, examples=["Maria Lopez"])
+    email:    Optional[EmailStr] = Field(None, examples=["maria@ganajec.ai"])
+    password: Optional[str]      = Field(None, min_length=8, examples=["nuevaClave123"])
 
 
 class BovinoCreate(BaseModel):
