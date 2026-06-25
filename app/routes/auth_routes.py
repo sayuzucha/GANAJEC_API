@@ -1,29 +1,29 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, limiter
 from app.controllers.auth_controller import AuthController
 from app.schemas.auth_schema import RegisterRequest, LoginRequest, FcmTokenUpdate
 
 router = APIRouter()
 
 
-# Registro de un nuevo usuario (ganadero, dueno o admin)
+# Registro: max 3 cuentas por minuto desde la misma IP
 @router.post("/register", status_code=201)
-async def register(data: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+async def register(request: Request, data: RegisterRequest, db: Session = Depends(get_db)):
     return AuthController.register(db, data)
 
 
-# Login: retorna token JWT + datos del usuario
+# Login: max 5 intentos por minuto desde la misma IP (anti brute-force)
 @router.post("/login")
-async def login(data: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, data: LoginRequest, db: Session = Depends(get_db)):
     return AuthController.login(db, data)
 
 
 # Registrar / actualizar el FCM token del dispositivo.
-# La app móvil debe llamar este endpoint justo después del login.
-# Enviar fcm_token=null desuscribe las notificaciones push del dispositivo.
 @router.put("/fcm-token")
 async def update_fcm_token(
     data: FcmTokenUpdate,

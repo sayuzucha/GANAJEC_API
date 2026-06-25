@@ -39,13 +39,13 @@ class BovinoUpdate(BaseModel):
 class RegistroSintomaCreate(BaseModel):
     bovino_id: str = Field(..., examples=["uuid-del-bovino"])
     texto_libre: str = Field(..., min_length=3, examples=["El animal presenta cojera leve en la pata trasera"])
-    temperatura: Optional[float] = Field(None, examples=[39.2])
-    produccion_leche: Optional[float] = Field(None, examples=[12.5])
-    frecuencia_cardiaca: Optional[float] = Field(None, examples=[72.0], description="Latidos por minuto")
-    frecuencia_respiratoria: Optional[float] = Field(None, examples=[28.0], description="Respiraciones por minuto")
+    temperatura: Optional[float] = Field(None, ge=35.0, le=45.0, examples=[39.2], description="Celsius, rango bovino normal 38-39.5")
+    produccion_leche: Optional[float] = Field(None, ge=0.0, le=100.0, examples=[12.5], description="Litros/dia")
+    frecuencia_cardiaca: Optional[float] = Field(None, ge=20.0, le=250.0, examples=[72.0], description="Latidos por minuto")
+    frecuencia_respiratoria: Optional[float] = Field(None, ge=5.0, le=120.0, examples=[28.0], description="Respiraciones por minuto")
     condicion_corporal: Optional[float] = Field(None, ge=1.0, le=5.0, examples=[3.5], description="Escala visual 1.0-5.0")
-    consumo_alimento_kg: Optional[float] = Field(None, examples=[12.0], description="Kg de alimento dado")
-    consumo_agua_l: Optional[float] = Field(None, examples=[65.0], description="Litros de agua aproximados")
+    consumo_alimento_kg: Optional[float] = Field(None, ge=0.0, le=150.0, examples=[12.0], description="Kg de alimento dado")
+    consumo_agua_l: Optional[float] = Field(None, ge=0.0, le=500.0, examples=[65.0], description="Litros de agua aproximados")
     sintomas_seleccionados: Optional[list[str]] = Field(None, examples=[["cojera", "fiebre"]])
 
 

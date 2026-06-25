@@ -11,3 +11,4 @@ joblib==1.4.2
 numpy==1.26.4
 spacy==3.8.14
 firebase-admin==6.5.0
+slowapi==0.1.9

@@ -447,7 +447,8 @@ class GanaderoController:
 
     # 9. GET /api/ganadero/alertas
     @staticmethod
-    def listar_alertas(db: Session, ganadero_id: str, bovino_id: str = None):
+    def listar_alertas(db: Session, ganadero_id: str, bovino_id: str = None,
+                          limit: int = 50, offset: int = 0):
         query = db.query(Alerta).filter(Alerta.ganadero_id == ganadero_id)
 
         if bovino_id is not None:
@@ -459,17 +460,24 @@ class GanaderoController:
                 )
             query = query.filter(Alerta.bovino_id == bovino_id)
 
-        alertas = query.order_by(Alerta.creado_en.desc()).all()
-        return {"total": len(alertas), "alertas": [a.to_dict() for a in alertas]}
+        total = query.count()
+        alertas = query.order_by(Alerta.creado_en.desc()).offset(offset).limit(limit).all()
+        return {"total": total, "limit": limit, "offset": offset, "alertas": [a.to_dict() for a in alertas]}
 
     # 10. PATCH /api/ganadero/alertas/{alerta_id}
     @staticmethod
-    def marcar_alerta(db: Session, alerta_id: str, data: AlertaUpdate):
+    def marcar_alerta(db: Session, alerta_id: str, ganadero_id: str, data: AlertaUpdate):
         alerta = db.query(Alerta).filter(Alerta.id == alerta_id).first()
         if not alerta:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No encontrado: la alerta con id '{alerta_id}' no existe",
+            )
+        # BOLA: solo el ganadero dueno de la alerta puede marcarla
+        if alerta.ganadero_id != ganadero_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado: esta alerta no te pertenece",
             )
 
         alerta.leida = data.leida

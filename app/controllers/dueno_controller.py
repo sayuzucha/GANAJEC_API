@@ -323,11 +323,18 @@ class DuenoController:
 
     # GET /api/dueno/bovinos/{bovino_id}
     @staticmethod
-    def detalle_bovino(db: Session, bovino_id: str):
+    def detalle_bovino(db: Session, bovino_id: str, dueno_id: str):
         bovino = db.query(Bovino).filter(Bovino.id == bovino_id).first()
         if not bovino:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                 detail=f"No encontrado: bovino '{bovino_id}' no existe")
+        # BOLA: verificar que el bovino pertenece a un rancho del dueno
+        rancho = db.query(Rancho).filter(
+            Rancho.id == bovino.rancho_id, Rancho.dueno_id == dueno_id
+        ).first()
+        if not rancho:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Acceso denegado: este bovino no pertenece a tus ranchos")
 
         registros = (
             db.query(RegistroSintoma)
@@ -413,25 +420,57 @@ class DuenoController:
 
     # ── VETERINARIOS ──────────────────────────────────────────────────────
 
-    # POST /api/dueno/ranchos/{rancho_id}/veterinarios
+    # GET /api/dueno/veterinarios  →  todos los vets del dueño
     @staticmethod
-    def agregar_veterinario(db: Session, rancho_id: str, data: VeterinarioCreate):
-        rancho = db.query(Rancho).filter(Rancho.id == rancho_id).first()
-        if not rancho:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"No encontrado: rancho '{rancho_id}' no existe")
+    def listar_todos_veterinarios(db: Session, dueno_id: str):
+        ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
+        vistos = set()
+        vets = []
+        for rancho in ranchos:
+            for vet in rancho.veterinarios:
+                if vet.id not in vistos:
+                    vistos.add(vet.id)
+                    d = vet.to_dict()
+                    d["ranchos"] = [{"id": r.id, "nombre": r.nombre} for r in vet.ranchos]
+                    vets.append(d)
+        return {"total": len(vets), "veterinarios": vets}
 
+    # POST /api/dueno/veterinarios  →  crear veterinario (sin rancho aún)
+    @staticmethod
+    def crear_veterinario(db: Session, data: VeterinarioCreate):
         vet = Veterinario(
-            rancho_id=rancho_id,
             nombre=data.nombre,
             telefono=data.telefono,
-            especialidad=data.especialidad,
+            ubicacion=data.ubicacion,
+            lugar=data.lugar,
             notas=data.notas,
         )
         db.add(vet)
         db.commit()
         db.refresh(vet)
-        return vet.to_dict()
+        return vet.to_dict(include_ranchos=True)
+
+    # POST /api/dueno/ranchos/{rancho_id}/veterinarios/{vet_id}  →  asociar
+    @staticmethod
+    def asociar_veterinario(db: Session, rancho_id: str, vet_id: str):
+        rancho = db.query(Rancho).filter(Rancho.id == rancho_id).first()
+        if not rancho:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No encontrado: rancho '{rancho_id}' no existe")
+
+        vet = db.query(Veterinario).filter(Veterinario.id == vet_id).first()
+        if not vet:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No encontrado: veterinario '{vet_id}' no existe")
+
+        if vet in rancho.veterinarios:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="El veterinario ya está asociado a este rancho")
+
+        rancho.veterinarios.append(vet)
+        db.commit()
+        return {"mensaje": f"Veterinario '{vet.nombre}' asociado a rancho '{rancho.nombre}'",
+                "veterinario": vet.to_dict(include_ranchos=True)}
 
     # GET /api/dueno/ranchos/{rancho_id}/veterinarios
     @staticmethod
@@ -441,16 +480,43 @@ class DuenoController:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                 detail=f"No encontrado: rancho '{rancho_id}' no existe")
 
-        vets = db.query(Veterinario).filter(Veterinario.rancho_id == rancho_id).all()
+        vets = rancho.veterinarios
         return {"rancho": rancho.nombre, "total": len(vets), "veterinarios": [v.to_dict() for v in vets]}
 
-    # PUT /api/dueno/veterinarios/{vet_id}
+    # DELETE /api/dueno/ranchos/{rancho_id}/veterinarios/{vet_id}  →  quitar asociación
     @staticmethod
-    def actualizar_veterinario(db: Session, vet_id: str, data: VeterinarioUpdate):
+    def quitar_veterinario(db: Session, rancho_id: str, vet_id: str):
+        rancho = db.query(Rancho).filter(Rancho.id == rancho_id).first()
+        if not rancho:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No encontrado: rancho '{rancho_id}' no existe")
+
         vet = db.query(Veterinario).filter(Veterinario.id == vet_id).first()
         if not vet:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                 detail=f"No encontrado: veterinario '{vet_id}' no existe")
+
+        if vet not in rancho.veterinarios:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="El veterinario no está asociado a este rancho")
+
+        rancho.veterinarios.remove(vet)
+        db.commit()
+        return {"mensaje": f"Veterinario '{vet.nombre}' desvinculado de rancho '{rancho.nombre}'"}
+
+    # PUT /api/dueno/veterinarios/{vet_id}
+    @staticmethod
+    def actualizar_veterinario(db: Session, vet_id: str, dueno_id: str, data: VeterinarioUpdate):
+        vet = db.query(Veterinario).filter(Veterinario.id == vet_id).first()
+        if not vet:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail=f"No encontrado: veterinario '{vet_id}' no existe")
+        # BOLA: solo el dueno que tenga este vet en alguno de sus ranchos puede editarlo
+        ranchos_dueno = {r.id for r in db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()}
+        vet_ranchos = {r.id for r in vet.ranchos}
+        if not ranchos_dueno.intersection(vet_ranchos):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Acceso denegado: este veterinario no esta asociado a tus ranchos")
 
         updates = data.model_dump(exclude_unset=True)
         if not updates:
@@ -462,15 +528,21 @@ class DuenoController:
 
         db.commit()
         db.refresh(vet)
-        return vet.to_dict()
+        return vet.to_dict(include_ranchos=True)
 
-    # DELETE /api/dueno/veterinarios/{vet_id}
+    # DELETE /api/dueno/veterinarios/{vet_id}  →  eliminar veterinario completamente
     @staticmethod
-    def eliminar_veterinario(db: Session, vet_id: str):
+    def eliminar_veterinario(db: Session, vet_id: str, dueno_id: str):
         vet = db.query(Veterinario).filter(Veterinario.id == vet_id).first()
         if not vet:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                 detail=f"No encontrado: veterinario '{vet_id}' no existe")
+        # BOLA: solo el dueno que tenga este vet en alguno de sus ranchos puede eliminarlo
+        ranchos_dueno = {r.id for r in db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()}
+        vet_ranchos = {r.id for r in vet.ranchos}
+        if not ranchos_dueno.intersection(vet_ranchos):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Acceso denegado: este veterinario no esta asociado a tus ranchos")
 
         nombre = vet.nombre
         db.delete(vet)
@@ -481,7 +553,7 @@ class DuenoController:
 
     # GET /api/dueno/bovinos
     @staticmethod
-    def todos_bovinos(db: Session, dueno_id: str):
+    def todos_bovinos(db: Session, dueno_id: str, limit: int = 50, offset: int = 0):
         """Todos los bovinos de todos los ranchos del dueño, con rancho y ganadero."""
         ranchos = db.query(Rancho).filter(Rancho.dueno_id == dueno_id).all()
         if not ranchos:
@@ -490,7 +562,9 @@ class DuenoController:
         rancho_map = {r.id: r.nombre for r in ranchos}
         rancho_ids = list(rancho_map.keys())
 
-        bovinos = db.query(Bovino).filter(Bovino.rancho_id.in_(rancho_ids)).all()
+        base_query = db.query(Bovino).filter(Bovino.rancho_id.in_(rancho_ids))
+        total_bovinos = base_query.count()
+        bovinos = base_query.offset(offset).limit(limit).all()
 
         ganadero_ids = list({b.ganadero_id for b in bovinos})
         ganadero_map = {}
@@ -507,7 +581,9 @@ class DuenoController:
 
         return {
             "total_ranchos": len(ranchos),
-            "total_bovinos": len(bovinos),
+            "total_bovinos": total_bovinos,
+            "limit": limit,
+            "offset": offset,
             "bovinos": resultado,
         }
 

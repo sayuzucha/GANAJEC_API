@@ -24,6 +24,14 @@ class Settings:
     DB_NAME = os.getenv("DB_NAME", "ganajec_db")
 
     SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esta-clave-en-produccion")
+
+    _WEAK_KEY = "cambia-esta-clave-en-produccion"
+    if SECRET_KEY == _WEAK_KEY:
+        import logging as _l
+        _l.getLogger("ganajec").warning(
+            "SEGURIDAD: SECRET_KEY usa el valor por defecto. "
+            "Define SECRET_KEY en .env antes de produccion."
+        )
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas
 

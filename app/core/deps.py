@@ -7,6 +7,11 @@ from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models import Usuario
 
+# Limitador de rate (instancia global, se registra en main.py)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+limiter = Limiter(key_func=get_remote_address)
+
 # tokenUrl es solo para la documentacion de Swagger
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -51,11 +56,6 @@ def get_current_user(
 
 
 def require_role(*roles: str):
-    """
-    Genera una dependencia que valida que el usuario actual tenga uno
-    de los roles indicados. Uso: Depends(require_role("dueno", "admin"))
-    """
-
     def checker(usuario: Usuario = Depends(get_current_user)) -> Usuario:
         if usuario.rol not in roles:
             raise HTTPException(
@@ -63,5 +63,26 @@ def require_role(*roles: str):
                 detail=f"Acceso denegado: se requiere rol {' o '.join(roles)}",
             )
         return usuario
-
     return checker
+
+
+# BOLA / IDOR helpers
+
+def require_self_ganadero(ganadero_id: str, usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """El ganadero autenticado solo puede acceder a sus propios recursos."""
+    if usuario.id != ganadero_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: no puedes acceder a recursos de otro usuario",
+        )
+    return usuario
+
+
+def require_self_dueno(dueno_id: str, usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """El dueno autenticado solo puede acceder a su propio perfil/suscripcion."""
+    if usuario.id != dueno_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: no puedes acceder a recursos de otro usuario",
+        )
+    return usuario

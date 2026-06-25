@@ -1,16 +1,25 @@
+import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.routes.auth_routes import router as auth_router
 from app.routes.ganadero_routes import router as ganadero_router
 from app.routes.dueno_routes import router as dueno_router
 from app.routes.admin_routes import router as admin_router
 from app.core.database import engine, Base
+from app.core.deps import limiter
 import app.models  # registra todos los modelos antes de create_all
+
+logger = logging.getLogger("ganajec")
+
+# Tamano maximo de payload: 1 MB (proteccion contra DoS por payloads enormes)
+MAX_PAYLOAD_BYTES = 1 * 1024 * 1024
 
 
 def create_app() -> FastAPI:
@@ -22,19 +31,32 @@ def create_app() -> FastAPI:
         version="2.0.0",
     )
 
+    # Rate limiter (anti brute-force)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    # Limite de payload (anti DoS)
+    @app.middleware("http")
+    async def limit_payload_size(request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_PAYLOAD_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"status": 413, "error": "Payload muy grande",
+                         "message": "El cuerpo de la solicitud supera el limite de 1 MB",
+                         "path": str(request.url.path)},
+            )
+        return await call_next(request)
+
+    # CORS: credentials=False porque la API usa Bearer token, no cookies.
+    # allow_origins=["*"] es seguro sin cookies.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "Accept"],
     )
-
-    # ──────────────────────────────────────────────
-    # Manejadores de errores personalizados
-    # Todos los errores devuelven el mismo formato JSON,
-    # listo para mostrarse "bonito" en el frontend (ej. "No encontrado")
-    # ──────────────────────────────────────────────
 
     REASONS = {
         400: "Solicitud invalida",
@@ -49,14 +71,9 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-        """
-        Captura HTTPException lanzadas desde los controllers (404, 400, 409, etc.)
-        y rutas que no existen (404 automatico de FastAPI/Starlette).
-        """
         detail = exc.detail
         if exc.status_code == 404 and detail in (None, "Not Found"):
             detail = f"La ruta '{request.url.path}' no existe en esta API"
-
         reason = REASONS.get(exc.status_code, "Error")
         return JSONResponse(
             status_code=exc.status_code,
@@ -84,9 +101,6 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(IntegrityError)
     async def integrity_error_handler(request: Request, exc: IntegrityError):
-        """
-        Errores de integridad de MySQL: llaves duplicadas, FK invalidas, etc.
-        """
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
@@ -101,9 +115,6 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(SQLAlchemyError)
     async def db_error_handler(request: Request, exc: SQLAlchemyError):
-        """
-        Cualquier otro error de base de datos (conexion perdida, query invalida, etc.)
-        """
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
@@ -117,10 +128,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
-        """
-        Red de seguridad: cualquier excepcion no controlada se convierte
-        en un 500 con formato consistente, en vez de un traceback crudo.
-        """
+        # El error real se loguea server-side, nunca se expone al cliente
+        logger.exception("Error no controlado en %s: %s", request.url.path, exc)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
@@ -132,9 +141,6 @@ def create_app() -> FastAPI:
             },
         )
 
-    # ──────────────────────────────────────────────
-    # Rutas
-    # ──────────────────────────────────────────────
     app.include_router(auth_router, prefix="/api/auth", tags=["Autenticacion"])
     app.include_router(ganadero_router, prefix="/api/ganadero", tags=["Ganadero"])
     app.include_router(dueno_router, prefix="/api/dueno", tags=["Dueno del rancho"])

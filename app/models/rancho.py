@@ -7,6 +7,7 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 from app.models.base import UUIDMixin
+from app.models.associations import rancho_veterinario
 
 
 def _generar_codigo() -> str:
@@ -33,7 +34,7 @@ class Rancho(Base, UUIDMixin):
     dueno        = relationship("Usuario",      back_populates="ranchos",      foreign_keys=[dueno_id])
     ganaderos    = relationship("Usuario",      back_populates="rancho",       foreign_keys="Usuario.rancho_id")
     bovinos      = relationship("Bovino",       back_populates="rancho")
-    veterinarios = relationship("Veterinario",  back_populates="rancho",       cascade="all, delete-orphan")
+    veterinarios = relationship("Veterinario",  secondary=rancho_veterinario,  back_populates="ranchos")
 
     def to_dict(self, include_codigo=False, include_dueno_nombre=False):
         data = {
