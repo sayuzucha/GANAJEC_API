@@ -57,3 +57,13 @@ class UsuarioUpdate(BaseModel):
 
 class ConfiguracionUpdate(BaseModel):
     valor: str = Field(..., examples=["0.85"])
+
+
+class DuenoPerfilUpdate(BaseModel):
+    nombre:   Optional[str]      = Field(None, min_length=3, examples=["Carlos Mendoza"])
+    email:    Optional[EmailStr] = Field(None, examples=["carlos@ganajec.ai"])
+    password: Optional[str]      = Field(None, min_length=8, examples=["nuevaClave123"])
+
+
+class MoverGanaderoRancho(BaseModel):
+    nuevo_rancho_id: str = Field(..., examples=["uuid-del-nuevo-rancho"])

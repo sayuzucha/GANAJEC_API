@@ -29,6 +29,48 @@ class DuenoController:
 
     # 1. GET /api/dueno/{dueno_id}
     @staticmethod
+    def actualizar_perfil(db: Session, dueno_id: str, data):
+        """El dueño actualiza su propio nombre, email y/o contraseña."""
+        dueno = db.query(Usuario).filter(
+            Usuario.id == dueno_id, Usuario.rol == "dueno"
+        ).first()
+        if not dueno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el dueño con id '{dueno_id}' no existe",
+            )
+
+        updates = data.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Solicitud invalida: no se enviaron campos para actualizar",
+            )
+
+        if "email" in updates:
+            existe = db.query(Usuario).filter(
+                Usuario.email == updates["email"],
+                Usuario.id != dueno_id,
+            ).first()
+            if existe:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Conflicto: ya existe un usuario con el correo '{updates['email']}'",
+                )
+            dueno.email = updates["email"]
+
+        if "nombre" in updates:
+            dueno.nombre = updates["nombre"]
+
+        if "password" in updates:
+            from app.core.security import hash_password
+            dueno.password_hash = hash_password(updates["password"])
+
+        db.commit()
+        db.refresh(dueno)
+        return dueno.to_dict()
+
+    @staticmethod
     def perfil(db: Session, dueno_id: str):
         dueno = db.query(Usuario).filter(
             Usuario.id == dueno_id, Usuario.rol == "dueno"
@@ -299,6 +341,47 @@ class DuenoController:
         ganadero.rancho_id = None
         db.commit()
         return {"mensaje": f"Ganadero '{ganadero.nombre}' removido del rancho '{rancho.nombre}'"}
+
+    @staticmethod
+    def mover_ganadero(db: Session, rancho_id: str, ganadero_id: str, nuevo_rancho_id: str, dueno_id: str):
+        """Mueve un ganadero de rancho_id a nuevo_rancho_id, ambos deben pertenecer al dueño."""
+        # Verificar que el rancho origen pertenece al dueño
+        rancho_origen = db.query(Rancho).filter(
+            Rancho.id == rancho_id, Rancho.dueno_id == dueno_id
+        ).first()
+        if not rancho_origen:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="No encontrado: rancho origen no existe o no tienes acceso")
+
+        # Verificar que el rancho destino también pertenece al dueño
+        rancho_destino = db.query(Rancho).filter(
+            Rancho.id == nuevo_rancho_id, Rancho.dueno_id == dueno_id
+        ).first()
+        if not rancho_destino:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="No encontrado: rancho destino no existe o no tienes acceso")
+
+        if rancho_id == nuevo_rancho_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="Conflicto: el ganadero ya está en ese rancho")
+
+        # Verificar que el ganadero pertenece al rancho origen
+        ganadero = db.query(Usuario).filter(
+            Usuario.id == ganadero_id,
+            Usuario.rol == "ganadero",
+            Usuario.rancho_id == rancho_id,
+        ).first()
+        if not ganadero:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="El ganadero no pertenece a este rancho")
+
+        ganadero.rancho_id = nuevo_rancho_id
+        db.commit()
+        db.refresh(ganadero)
+        return {
+            "mensaje": f"Ganadero '{ganadero.nombre}' movido a rancho '{rancho_destino.nombre}'",
+            "ganadero": ganadero.to_dict(),
+        }
 
     # ── GANADERO: ver bovinos ─────────────────────────────────────────────
 

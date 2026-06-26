@@ -99,6 +99,12 @@ async def listar_colegas(db: Session = Depends(get_db), usuario=Depends(ganadero
     return GanaderoController.listar_colegas(db, usuario.id)
 
 
+# Veterinarios del rancho del ganadero
+@router.get("/veterinarios")
+async def listar_veterinarios(db: Session = Depends(get_db), usuario=Depends(ganadero_only)):
+    return GanaderoController.listar_veterinarios(db, usuario.id)
+
+
 # Rutas con /{ganadero_id} AL FINAL
 # BOLA: require_self_ganadero verifica que ganadero_id == usuario.id
 

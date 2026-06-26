@@ -39,6 +39,7 @@ class BovinoUpdate(BaseModel):
 class RegistroSintomaCreate(BaseModel):
     bovino_id: str = Field(..., examples=["uuid-del-bovino"])
     texto_libre: str = Field(..., min_length=3, examples=["El animal presenta cojera leve en la pata trasera"])
+    # ── Vitales (originales) ──────────────────────────────────────
     temperatura: Optional[float] = Field(None, ge=35.0, le=45.0, examples=[39.2], description="Celsius, rango bovino normal 38-39.5")
     produccion_leche: Optional[float] = Field(None, ge=0.0, le=100.0, examples=[12.5], description="Litros/dia")
     frecuencia_cardiaca: Optional[float] = Field(None, ge=20.0, le=250.0, examples=[72.0], description="Latidos por minuto")
@@ -47,6 +48,18 @@ class RegistroSintomaCreate(BaseModel):
     consumo_alimento_kg: Optional[float] = Field(None, ge=0.0, le=150.0, examples=[12.0], description="Kg de alimento dado")
     consumo_agua_l: Optional[float] = Field(None, ge=0.0, le=500.0, examples=[65.0], description="Litros de agua aproximados")
     sintomas_seleccionados: Optional[list[str]] = Field(None, examples=[["cojera", "fiebre"]])
+    # ── Productivo / reproductivo (opcionales, mejoran el modelo) ─
+    parity: Optional[int] = Field(None, ge=0, le=20, examples=[2], description="Número de partos previos")
+    dias_en_leche: Optional[int] = Field(None, ge=0, le=730, examples=[120], description="Días desde el último parto")
+    produccion_semana_anterior: Optional[float] = Field(None, ge=0.0, le=100.0, examples=[11.5], description="Promedio de producción de leche la semana anterior (L/día)")
+    # ── Entorno ──────────────────────────────────────────────────
+    temperatura_ambiente: Optional[float] = Field(None, ge=-10.0, le=55.0, examples=[25.0], description="Temperatura ambiente en Celsius")
+    # ── Vacunas aplicadas (0 = no, 1 = sí) ───────────────────────
+    vacuna_fmdv: Optional[int] = Field(None, ge=0, le=1, examples=[1], description="Vacuna Fiebre Aftosa")
+    vacuna_brucelosis: Optional[int] = Field(None, ge=0, le=1, examples=[0], description="Vacuna Brucelosis")
+    vacuna_septicemia: Optional[int] = Field(None, ge=0, le=1, examples=[0], description="Vacuna Septicemia Hemorrágica")
+    vacuna_carbon_sint: Optional[int] = Field(None, ge=0, le=1, examples=[0], description="Vacuna Carbón Sintomático")
+    vacuna_antrax: Optional[int] = Field(None, ge=0, le=1, examples=[0], description="Vacuna Ántrax")
 
 
 class AlertaUpdate(BaseModel):

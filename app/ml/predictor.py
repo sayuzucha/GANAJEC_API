@@ -33,6 +33,7 @@ with open(os.path.join(_MODELS_DIR, "metadata.json"), encoding="utf-8") as f:
 # Orden exacto de columnas con el que se entrenaron los modelos.
 # Debe coincidir con app/ml/models/random_forest.pkl e isolation_forest.pkl
 _FEATURE_ORDER = [
+    # ── vitales (originales) ──
     "Age_Months",
     "Weight_kg",
     "Body_Temperature_C",
@@ -42,6 +43,18 @@ _FEATURE_ORDER = [
     "Body_Condition_Score",
     "Feed_Quantity_kg",
     "Water_Intake_L",
+    # ── productivo / reproductivo ──
+    "Parity",
+    "Days_in_Milk",
+    "Previous_Week_Avg_Yield",
+    # ── entorno ──
+    "Ambient_Temperature_C",
+    # ── vacunas (0/1) ──
+    "FMD_Vaccine",
+    "Brucellosis_Vaccine",
+    "HS_Vaccine",
+    "BQ_Vaccine",
+    "Anthrax_Vaccine",
 ]
 
 # Umbrales calibrados con la distribucion real de confianzas del modelo
@@ -82,31 +95,57 @@ def _build_feature_vector(datos: dict) -> np.ndarray:
     Construye el vector de caracteristicas en el orden correcto a partir
     de un diccionario con llaves en español (las de REGISTROS_SINTOMAS + BOVINOS).
 
-    Si algun valor es None, se rellena con un valor neutro (promedio aproximado
-    del dataset de entrenamiento) para no romper la prediccion.
+    Los campos nuevos (parity, dias_en_leche, vacunas, etc.) son opcionales:
+    si no se envían, se usa el promedio del dataset para no romper la prediccion.
     """
     defaults = {
-        "Age_Months": 60.0,
-        "Weight_kg": 450.0,
-        "Body_Temperature_C": 38.5,
-        "Heart_Rate_bpm": 65.0,
-        "Respiratory_Rate": 25.0,
-        "Milk_Yield_L": 8.0,
+        # ── vitales ──
+        "Age_Months":           60.0,
+        "Weight_kg":            450.0,
+        "Body_Temperature_C":   38.5,
+        "Heart_Rate_bpm":       65.0,
+        "Respiratory_Rate":     25.0,
+        "Milk_Yield_L":         8.0,
         "Body_Condition_Score": 3.0,
-        "Feed_Quantity_kg": 12.0,
-        "Water_Intake_L": 60.0,
+        "Feed_Quantity_kg":     12.0,
+        "Water_Intake_L":       60.0,
+        # ── productivo / reproductivo ──
+        "Parity":               2.0,
+        "Days_in_Milk":         180.0,
+        "Previous_Week_Avg_Yield": 8.0,
+        # ── entorno ──
+        "Ambient_Temperature_C": 22.0,
+        # ── vacunas (0 = no vacunado) ──
+        "FMD_Vaccine":        0.0,
+        "Brucellosis_Vaccine":0.0,
+        "HS_Vaccine":         0.0,
+        "BQ_Vaccine":         0.0,
+        "Anthrax_Vaccine":    0.0,
     }
 
     mapping = {
-        "Age_Months": datos.get("edad_meses"),
-        "Weight_kg": datos.get("peso_kg"),
-        "Body_Temperature_C": datos.get("temperatura"),
-        "Heart_Rate_bpm": datos.get("frecuencia_cardiaca"),
-        "Respiratory_Rate": datos.get("frecuencia_respiratoria"),
-        "Milk_Yield_L": datos.get("produccion_leche"),
+        # ── vitales ──
+        "Age_Months":           datos.get("edad_meses"),
+        "Weight_kg":            datos.get("peso_kg"),
+        "Body_Temperature_C":   datos.get("temperatura"),
+        "Heart_Rate_bpm":       datos.get("frecuencia_cardiaca"),
+        "Respiratory_Rate":     datos.get("frecuencia_respiratoria"),
+        "Milk_Yield_L":         datos.get("produccion_leche"),
         "Body_Condition_Score": datos.get("condicion_corporal"),
-        "Feed_Quantity_kg": datos.get("consumo_alimento_kg"),
-        "Water_Intake_L": datos.get("consumo_agua_l"),
+        "Feed_Quantity_kg":     datos.get("consumo_alimento_kg"),
+        "Water_Intake_L":       datos.get("consumo_agua_l"),
+        # ── productivo / reproductivo ──
+        "Parity":               datos.get("parity"),
+        "Days_in_Milk":         datos.get("dias_en_leche"),
+        "Previous_Week_Avg_Yield": datos.get("produccion_semana_anterior"),
+        # ── entorno ──
+        "Ambient_Temperature_C": datos.get("temperatura_ambiente"),
+        # ── vacunas ──
+        "FMD_Vaccine":        datos.get("vacuna_fmdv"),
+        "Brucellosis_Vaccine":datos.get("vacuna_brucelosis"),
+        "HS_Vaccine":         datos.get("vacuna_septicemia"),
+        "BQ_Vaccine":         datos.get("vacuna_carbon_sint"),
+        "Anthrax_Vaccine":    datos.get("vacuna_antrax"),
     }
 
     valores = []

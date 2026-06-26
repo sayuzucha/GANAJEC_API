@@ -302,15 +302,26 @@ class GanaderoController:
                          (hoy.month - bovino.fecha_nacimiento.month)
 
         datos_ml = {
-            "edad_meses": edad_meses,
-            "peso_kg": bovino.peso_kg,
-            "temperatura": nuevo.temperatura,
-            "frecuencia_cardiaca": nuevo.frecuencia_cardiaca,
+            # ── vitales (originales) ──
+            "edad_meses":           edad_meses,
+            "peso_kg":              bovino.peso_kg,
+            "temperatura":          nuevo.temperatura,
+            "frecuencia_cardiaca":  nuevo.frecuencia_cardiaca,
             "frecuencia_respiratoria": nuevo.frecuencia_respiratoria,
-            "produccion_leche": nuevo.produccion_leche,
-            "condicion_corporal": nuevo.condicion_corporal,
-            "consumo_alimento_kg": nuevo.consumo_alimento_kg,
-            "consumo_agua_l": nuevo.consumo_agua_l,
+            "produccion_leche":     nuevo.produccion_leche,
+            "condicion_corporal":   nuevo.condicion_corporal,
+            "consumo_alimento_kg":  nuevo.consumo_alimento_kg,
+            "consumo_agua_l":       nuevo.consumo_agua_l,
+            # ── nuevos campos opcionales (mejoran el modelo) ──
+            "parity":                      data.parity,
+            "dias_en_leche":               data.dias_en_leche,
+            "produccion_semana_anterior":  data.produccion_semana_anterior,
+            "temperatura_ambiente":        data.temperatura_ambiente,
+            "vacuna_fmdv":                 data.vacuna_fmdv,
+            "vacuna_brucelosis":           data.vacuna_brucelosis,
+            "vacuna_septicemia":           data.vacuna_septicemia,
+            "vacuna_carbon_sint":          data.vacuna_carbon_sint,
+            "vacuna_antrax":               data.vacuna_antrax,
         }
 
         # ── 1. Random Forest: predecir enfermedad ──────────────────
@@ -443,6 +454,30 @@ class GanaderoController:
         return {
             "mensaje": f"Te uniste al rancho '{rancho.nombre}' exitosamente",
             "rancho": rancho.to_dict(),
+        }
+
+    @staticmethod
+    def listar_veterinarios(db: Session, ganadero_id: str):
+        """Devuelve los veterinarios del rancho al que pertenece el ganadero."""
+        ganadero = db.query(Usuario).filter(
+            Usuario.id == ganadero_id, Usuario.rol == "ganadero"
+        ).first()
+        if not ganadero:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="No encontrado: ganadero no existe")
+
+        if not ganadero.rancho_id:
+            return {"rancho": None, "total": 0, "veterinarios": []}
+
+        rancho = db.query(Rancho).filter(Rancho.id == ganadero.rancho_id).first()
+        if not rancho:
+            return {"rancho": None, "total": 0, "veterinarios": []}
+
+        vets = rancho.veterinarios
+        return {
+            "rancho": rancho.nombre,
+            "total": len(vets),
+            "veterinarios": [v.to_dict() for v in vets],
         }
 
     # 9. GET /api/ganadero/alertas

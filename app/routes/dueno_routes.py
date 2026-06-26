@@ -11,6 +11,8 @@ from app.schemas.general_schema import (
     GanaderoCreate, GanaderoUpdate,
     AsignarGanaderoRancho,
     VeterinarioCreate, VeterinarioUpdate,
+    DuenoPerfilUpdate,
+    MoverGanaderoRancho,
 )
 
 router = APIRouter()
@@ -62,6 +64,13 @@ async def asignar_ganadero(rancho_id: str, data: AsignarGanaderoRancho,
                            db: Session = Depends(get_db), usuario=Depends(dueno_only),
                            _=Depends(_rancho_owner)):
     return DuenoController.asignar_ganadero(db, rancho_id, data)
+
+
+@router.patch("/ranchos/{rancho_id}/ganaderos/{ganadero_id}")
+async def mover_ganadero(rancho_id: str, ganadero_id: str, data: MoverGanaderoRancho,
+                         db: Session = Depends(get_db), usuario=Depends(dueno_only),
+                         _=Depends(_rancho_owner)):
+    return DuenoController.mover_ganadero(db, rancho_id, ganadero_id, data.nuevo_rancho_id, usuario.id)
 
 
 @router.delete("/ranchos/{rancho_id}/ganaderos/{ganadero_id}")
@@ -206,6 +215,13 @@ async def obtener_suscripcion(dueno_id: str, db: Session = Depends(get_db),
                               usuario=Depends(dueno_only),
                               _=Depends(require_self_dueno)):
     return DuenoController.obtener_suscripcion(db, dueno_id)
+
+
+@router.put("/{dueno_id}/perfil")
+async def actualizar_perfil(dueno_id: str, data: DuenoPerfilUpdate,
+                            db: Session = Depends(get_db), usuario=Depends(dueno_only),
+                            _=Depends(require_self_dueno)):
+    return DuenoController.actualizar_perfil(db, dueno_id, data)
 
 
 @router.get("/{dueno_id}")
