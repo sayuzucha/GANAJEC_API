@@ -14,6 +14,8 @@ class Usuario(Base, UUIDMixin):
     password_hash = Column(String(255), nullable=False)
     rol = Column(Enum("ganadero", "dueno", "admin", name="rol_usuario"), nullable=False)
     activo = Column(Boolean, default=True, nullable=False)
+    email_verificado = Column(Boolean, default=False, nullable=False)
+    ultima_actividad = Column(DateTime, nullable=True)
     creado_en = Column(DateTime, server_default=func.now())
     # Token del dispositivo móvil para notificaciones push via Firebase FCM.
     # Se actualiza desde la app tras el login con PUT /api/auth/fcm-token.
@@ -38,6 +40,8 @@ class Usuario(Base, UUIDMixin):
             "nombre": self.nombre,
             "rol": self.rol,
             "activo": self.activo,
+            "email_verificado": self.email_verificado,
+            "ultima_actividad": self.ultima_actividad.isoformat() if self.ultima_actividad else None,
             "rancho_id": self.rancho_id,
             "creado_en": self.creado_en.isoformat() if self.creado_en else None,
         }

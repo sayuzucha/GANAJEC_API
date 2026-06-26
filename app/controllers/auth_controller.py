@@ -1,9 +1,21 @@
+from datetime import datetime, timedelta
+import secrets
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import Usuario
-from app.schemas.auth_schema import RegisterRequest, LoginRequest, FcmTokenUpdate
+from app.models import Usuario, CodigoVerificacion
+from app.schemas.auth_schema import (
+    RegisterRequest,
+    LoginRequest,
+    FcmTokenUpdate,
+    VerificarEmailRequest,
+    ReenviarCodigoRequest,
+    SolicitarRecuperacionRequest,
+    RestablecerPasswordRequest,
+)
 from app.core.security import hash_password, verify_password, create_access_token
+from app.core.email_service import enviar_codigo
 
 
 class AuthController:
@@ -82,3 +94,109 @@ class AuthController:
 
         accion = "registrado" if data.fcm_token else "eliminado"
         return {"mensaje": f"FCM token {accion} correctamente"}
+
+    @staticmethod
+    def generar_codigo() -> str:
+        return f"{secrets.randbelow(10 ** 6):06d}"
+
+    @staticmethod
+    def crear_codigo_verificacion(db: Session, usuario_id: str, tipo: str) -> CodigoVerificacion:
+        codigo = AuthController.generar_codigo()
+        registro = CodigoVerificacion(
+            usuario_id=usuario_id,
+            codigo=codigo,
+            tipo=tipo,
+            expira_en=datetime.utcnow() + timedelta(minutes=15),
+        )
+        db.add(registro)
+        db.commit()
+        db.refresh(registro)
+        return registro
+
+    @staticmethod
+    def verificar_email(db: Session, data: VerificarEmailRequest):
+        usuario = db.query(Usuario).filter(Usuario.email == data.email).first()
+        if not usuario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: no existe un usuario con el correo '{data.email}'",
+            )
+
+        codigo_valido = (
+            db.query(CodigoVerificacion)
+            .filter(
+                CodigoVerificacion.usuario_id == usuario.id,
+                CodigoVerificacion.codigo == data.codigo,
+                CodigoVerificacion.tipo == "verificacion_email",
+                CodigoVerificacion.usado == False,
+                CodigoVerificacion.expira_en > datetime.utcnow(),
+            )
+            .first()
+        )
+        if not codigo_valido:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Codigo invalido o expirado",
+            )
+
+        usuario.email_verificado = True
+        codigo_valido.usado = True
+        db.commit()
+        return {"mensaje": "Correo verificado correctamente"}
+
+    @staticmethod
+    def reenviar_codigo(db: Session, data: ReenviarCodigoRequest):
+        usuario = db.query(Usuario).filter(Usuario.email == data.email).first()
+        if not usuario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: no existe un usuario con el correo '{data.email}'",
+            )
+
+        if data.tipo == "verificacion_email" and usuario.email_verificado:
+            return {"mensaje": "El correo ya esta verificado"}
+
+        nuevo_codigo = AuthController.crear_codigo_verificacion(db, usuario.id, data.tipo)
+        enviar_codigo(usuario.email, nuevo_codigo.codigo, data.tipo)
+        return {"mensaje": "Codigo enviado correctamente"}
+
+    @staticmethod
+    def solicitar_recuperacion(db: Session, data: SolicitarRecuperacionRequest):
+        usuario = db.query(Usuario).filter(Usuario.email == data.email).first()
+        if not usuario:
+            return {"mensaje": "Si el correo esta registrado, recibiras un codigo"}
+
+        nuevo_codigo = AuthController.crear_codigo_verificacion(db, usuario.id, "recuperacion_password")
+        enviar_codigo(usuario.email, nuevo_codigo.codigo, "recuperacion_password")
+        return {"mensaje": "Si el correo esta registrado, recibiras un codigo"}
+
+    @staticmethod
+    def restablecer_password(db: Session, data: RestablecerPasswordRequest):
+        usuario = db.query(Usuario).filter(Usuario.email == data.email).first()
+        if not usuario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: no existe un usuario con el correo '{data.email}'",
+            )
+
+        codigo_valido = (
+            db.query(CodigoVerificacion)
+            .filter(
+                CodigoVerificacion.usuario_id == usuario.id,
+                CodigoVerificacion.codigo == data.codigo,
+                CodigoVerificacion.tipo == "recuperacion_password",
+                CodigoVerificacion.usado == False,
+                CodigoVerificacion.expira_en > datetime.utcnow(),
+            )
+            .first()
+        )
+        if not codigo_valido:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Codigo invalido o expirado",
+            )
+
+        usuario.password_hash = hash_password(data.nueva_password)
+        codigo_valido.usado = True
+        db.commit()
+        return {"mensaje": "Contrasena restablecida correctamente"}

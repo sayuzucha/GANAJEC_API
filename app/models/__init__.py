@@ -10,6 +10,7 @@ from app.models.historial_productivo import HistorialProductivo
 from app.models.alerta import Alerta, Notificacion
 from app.models.plan import Plan, Suscripcion
 from app.models.configuracion_sistema import AuditoriaLog, ConfiguracionSistema
+from app.models.codigo_verificacion import CodigoVerificacion
 from app.models.associations import rancho_veterinario
 from app.models.veterinario import Veterinario
 
@@ -26,5 +27,6 @@ __all__ = [
     "Suscripcion",
     "AuditoriaLog",
     "ConfiguracionSistema",
+    "CodigoVerificacion",
     "Veterinario",
 ]

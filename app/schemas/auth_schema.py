@@ -26,3 +26,23 @@ class FcmTokenUpdate(BaseModel):
         examples=["fcm-token-del-dispositivo"],
         description="Token FCM del dispositivo. Null para desuscribir.",
     )
+
+
+class VerificarEmailRequest(BaseModel):
+    email: EmailStr
+    codigo: str = Field(..., min_length=6, max_length=6, examples=["048213"])
+
+
+class ReenviarCodigoRequest(BaseModel):
+    email: EmailStr
+    tipo: str = Field(..., pattern="^(verificacion_email|recuperacion_password)$", examples=["verificacion_email"])
+
+
+class SolicitarRecuperacionRequest(BaseModel):
+    email: EmailStr
+
+
+class RestablecerPasswordRequest(BaseModel):
+    email: EmailStr
+    codigo: str = Field(..., min_length=6, max_length=6, examples=["048213"])
+    nueva_password: str = Field(..., min_length=8, examples=["claveSegura123"])
