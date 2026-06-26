@@ -22,7 +22,11 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ── Datos ───────────────────────────────────────────────
 global_cattle_disease_detection_dataset.csv
+Testing.csv
+Training.csv
 
 # Documentación
 *.html

@@ -4,197 +4,183 @@ Modulo de Machine Learning de GANAJEC AI.
 Carga los modelos entrenados (Random Forest + Isolation Forest) una sola vez
 al iniciar la API, y expone funciones para:
 
-- predecir_enfermedad(): a partir de los datos de un registro de sintomas,
-  predice la enfermedad mas probable, su confianza y severidad.
-- detectar_anomalia(): determina si los valores productivos del registro
-  son anomalos respecto a un bovino sano (para generar alertas).
+- predecir_enfermedad(): a partir de los síntomas detectados por NLP y los
+  vitales del registro, construye un vector binario de 93 síntomas y predice
+  la enfermedad más probable, su confianza y severidad.
+- detectar_anomalia(): determina si el conjunto de síntomas es anómalo.
 
-Los modelos fueron entrenados con el dataset "Global Cattle Disease Detection"
-usando solo variables que el ganadero puede registrar sin sensores:
-edad, peso, temperatura, frecuencia cardiaca, frecuencia respiratoria,
-produccion de leche, condicion corporal, consumo de alimento y de agua.
+Los modelos fueron entrenados con el dataset "Cattle Disease Prediction"
+(Training.csv / Testing.csv) usando 93 síntomas veterinarios binarios
+observables por el ganadero sin necesidad de sensores.
 """
 import json
 import os
 import joblib
 import numpy as np
 
-_BASE_DIR = os.path.dirname(__file__)
+_BASE_DIR   = os.path.dirname(__file__)
 _MODELS_DIR = os.path.join(_BASE_DIR, "models")
 
 # ── Carga de modelos (una sola vez, al importar el modulo) ──────────
-_random_forest = joblib.load(os.path.join(_MODELS_DIR, "random_forest.pkl"))
+_random_forest    = joblib.load(os.path.join(_MODELS_DIR, "random_forest.pkl"))
 _isolation_forest = joblib.load(os.path.join(_MODELS_DIR, "isolation_forest.pkl"))
-_label_encoder = joblib.load(os.path.join(_MODELS_DIR, "label_encoder.pkl"))
+_label_encoder    = joblib.load(os.path.join(_MODELS_DIR, "label_encoder.pkl"))
 
 with open(os.path.join(_MODELS_DIR, "metadata.json"), encoding="utf-8") as f:
     METADATA = json.load(f)
 
-# Orden exacto de columnas con el que se entrenaron los modelos.
-# Debe coincidir con app/ml/models/random_forest.pkl e isolation_forest.pkl
-_FEATURE_ORDER = [
-    # ── vitales (originales) ──
-    "Age_Months",
-    "Weight_kg",
-    "Body_Temperature_C",
-    "Heart_Rate_bpm",
-    "Respiratory_Rate",
-    "Milk_Yield_L",
-    "Body_Condition_Score",
-    "Feed_Quantity_kg",
-    "Water_Intake_L",
-    # ── productivo / reproductivo ──
-    "Parity",
-    "Days_in_Milk",
-    "Previous_Week_Avg_Yield",
-    # ── entorno ──
-    "Ambient_Temperature_C",
-    # ── vacunas (0/1) ──
-    "FMD_Vaccine",
-    "Brucellosis_Vaccine",
-    "HS_Vaccine",
-    "BQ_Vaccine",
-    "Anthrax_Vaccine",
-]
+# Orden exacto de las 93 columnas con las que se entrenó el modelo.
+_FEATURE_ORDER = METADATA["features"]
 
-# Umbrales calibrados con la distribucion real de confianzas del modelo
-# (media ~0.14 con 23 clases). Ver app/ml/models/metadata.json
 _UMBRAL_MODERADA = METADATA["umbrales_severidad"]["moderada"]
-_UMBRAL_ALTA = METADATA["umbrales_severidad"]["alta"]
+_UMBRAL_ALTA     = METADATA["umbrales_severidad"]["alta"]
 
-# Traduccion de nombres de enfermedad (ingles del dataset -> español para la app)
+# ── Traducción de nombres de enfermedad (inglés → español) ──────────
 TRADUCCION_ENFERMEDADES = {
-    "Healthy": "Sin anomalias detectadas",
-    "Mastitis_Clinical": "Mastitis clinica",
-    "Mastitis_Subclinical": "Mastitis subclinica",
-    "Foot_and_Mouth": "Fiebre aftosa",
-    "Foot_Rot": "Pudricion de pezuna",
-    "Laminitis": "Laminitis",
-    "Lameness_Clinical": "Cojera clinica",
-    "Pneumonia": "Neumonia",
-    "Bovine_Respiratory_Disease": "Enfermedad respiratoria bovina",
-    "Diarrhea": "Diarrea",
-    "Bloat": "Timpanismo (meteorismo)",
-    "Acidosis": "Acidosis ruminal",
-    "Anaplasmosis": "Anaplasmosis",
-    "Babesiosis": "Babesiosis (garrapata)",
-    "Internal_Parasites": "Parasitos internos",
-    "Brucellosis": "Brucelosis",
-    "Bovine_Tuberculosis": "Tuberculosis bovina",
-    "Milk_Fever": "Fiebre de leche (hipocalcemia)",
-    "Ketosis_Clinical": "Cetosis clinica",
-    "Heat_Stress": "Estres calorico",
-    "Anthrax": "Carbon bacteridiano (antrax)",
-    "Black_Quarter": "Carbon sintomatico",
-    "Haemorrhagic_Septicemia": "Septicemia hemorragica",
+    "acetonaemia":                   "Acetonemia (cetosis)",
+    "blackleg":                      "Carbón sintomático (pierna negra)",
+    "bloat":                         "Timpanismo (meteorismo)",
+    "calf_diphtheria":               "Difteria del becerro",
+    "calf_pneumonia":                "Neumonía del becerro",
+    "coccidiosis":                   "Coccidiosis",
+    "cryptosporidiosis":             "Criptosporidiosis",
+    "displaced_abomasum":            "Desplazamiento de abomaso",
+    "fatty_liver_syndrome":          "Síndrome de hígado graso",
+    "fog_fever":                     "Fiebre de pasto (enfisema pulmonar)",
+    "foot_and_mouth":                "Fiebre aftosa",
+    "foot_rot":                      "Pudrición de pezuña",
+    "gut_worms":                     "Parásitos gastrointestinales",
+    "infectious_bovine_rhinotracheitis": "Rinotraqueítis infecciosa bovina (IBR)",
+    "listeriosis":                   "Listeriosis",
+    "liver_fluke":                   "Fasciola hepática (distomatosis)",
+    "mastitis":                      "Mastitis",
+    "necrotic_enteritis":            "Enteritis necrótica",
+    "peri_weaning_diarrhoea":        "Diarrea del destete",
+    "ragwort_poisoning":             "Intoxicación por hierba cana",
+    "rift_valley_fever":             "Fiebre del Valle del Rift",
+    "rumen_acidosis":                "Acidosis ruminal",
+    "schmallen_berg_virus":          "Virus Schmallenberg",
+    "traumatic_reticulitis":         "Reticulitis traumática (enfermedad del clavo)",
+    "trypanosomosis":                "Tripanosomosis",
+    "wooden_tongue":                 "Actinobacilosis (lengua de madera)",
 }
+
+# ── Mapeo: síntoma NLP (español) → columnas del dataset (inglés) ────
+# Cada síntoma detectado por NLP activa una o más columnas binarias.
+_NLP_A_DATASET = {
+    "fiebre":                ["fever", "high_temp", "intermittent_fever"],
+    "cojera":                ["lameness", "unwillingness_to_move"],
+    "decaimiento":           ["dull", "lethargy", "depression", "weakness"],
+    "anorexia":              ["anorexia", "loss_of_appetite", "reduces_feed_intake"],
+    "diarrea":               ["diarrhoea", "dysentery", "highly_diarrhoea", "mild_diarrhoea"],
+    "tos":                   ["coughing", "pneumonia"],
+    "dificultad_respiratoria": ["dyspnea", "diffculty_breath", "rapid_breathing",
+                                "raised_breathing", "shallow_breathing"],
+    "secrecion_nasal":       ["nasel_discharges"],
+    "secrecion_ocular":      ["lacrimation", "conjunctivae"],
+    "hinchazon_ubre":        ["udder_swelling", "udder_heat", "udder_hardeness",
+                              "udder_redness", "udder_pain"],
+    "baja_produccion_leche": ["reduction_milk_vields", "milk_flakes", "milk_watery", "milk_clots"],
+    "distension_abdominal":  ["gaseous_stomach", "abdominal_pain", "stomach_pain", "rumenstasis"],
+    "lesiones_piel":         ["blisters", "mucosal_lesions", "ulcers", "swelling"],
+    "ampollas_boca":         ["blisters", "mucosal_lesions", "painful_tongue",
+                              "swollen_tongue", "salivation", "saliva", "frothing"],
+    "temblores":             ["encephalitis", "lack_of-coordination"],
+    "salivacion_excesiva":   ["salivation", "saliva", "frothing", "frothing_of_mouth", "drooling"],
+    "hinchazon_cuello":      ["swollen_pharyngeal", "swelling", "oedema"],
+    "garrapatas":            ["anaemia", "blood_loss"],
+    "perdida_peso":          ["weight_loss", "emaciation", "reduced_fat"],
+    "ganglios_inflamados":   ["swollen_pharyngeal", "swelling", "oedema"],
+    "debilidad_posparto":    ["weakness", "milk_fever", "lack_of-coordination"],
+    "aliento_cetonas":       ["acetone", "ketosis"],
+}
+
+# ── Índice de columnas para acceso rápido ────────────────────────────
+_COL_INDEX = {col: i for i, col in enumerate(_FEATURE_ORDER)}
 
 
 def _build_feature_vector(datos: dict) -> np.ndarray:
     """
-    Construye el vector de caracteristicas en el orden correcto a partir
-    de un diccionario con llaves en español (las de REGISTROS_SINTOMAS + BOVINOS).
+    Construye el vector binario de 93 síntomas a partir de:
+    - sintomas_nlp: list[str]  — síntomas detectados por NLP (español)
+    - temperatura, frecuencia_cardiaca, etc. — vitales para derivar síntomas objetivos
 
-    Los campos nuevos (parity, dias_en_leche, vacunas, etc.) son opcionales:
-    si no se envían, se usa el promedio del dataset para no romper la prediccion.
+    Si un síntoma NLP activa múltiples columnas del dataset, todas se ponen a 1.
+    Las vitales se convierten a síntomas mediante umbrales clínicos bovinos.
     """
-    defaults = {
-        # ── vitales ──
-        "Age_Months":           60.0,
-        "Weight_kg":            450.0,
-        "Body_Temperature_C":   38.5,
-        "Heart_Rate_bpm":       65.0,
-        "Respiratory_Rate":     25.0,
-        "Milk_Yield_L":         8.0,
-        "Body_Condition_Score": 3.0,
-        "Feed_Quantity_kg":     12.0,
-        "Water_Intake_L":       60.0,
-        # ── productivo / reproductivo ──
-        "Parity":               2.0,
-        "Days_in_Milk":         180.0,
-        "Previous_Week_Avg_Yield": 8.0,
-        # ── entorno ──
-        "Ambient_Temperature_C": 22.0,
-        # ── vacunas (0 = no vacunado) ──
-        "FMD_Vaccine":        0.0,
-        "Brucellosis_Vaccine":0.0,
-        "HS_Vaccine":         0.0,
-        "BQ_Vaccine":         0.0,
-        "Anthrax_Vaccine":    0.0,
-    }
+    vec = np.zeros(len(_FEATURE_ORDER), dtype=float)
 
-    mapping = {
-        # ── vitales ──
-        "Age_Months":           datos.get("edad_meses"),
-        "Weight_kg":            datos.get("peso_kg"),
-        "Body_Temperature_C":   datos.get("temperatura"),
-        "Heart_Rate_bpm":       datos.get("frecuencia_cardiaca"),
-        "Respiratory_Rate":     datos.get("frecuencia_respiratoria"),
-        "Milk_Yield_L":         datos.get("produccion_leche"),
-        "Body_Condition_Score": datos.get("condicion_corporal"),
-        "Feed_Quantity_kg":     datos.get("consumo_alimento_kg"),
-        "Water_Intake_L":       datos.get("consumo_agua_l"),
-        # ── productivo / reproductivo ──
-        "Parity":               datos.get("parity"),
-        "Days_in_Milk":         datos.get("dias_en_leche"),
-        "Previous_Week_Avg_Yield": datos.get("produccion_semana_anterior"),
-        # ── entorno ──
-        "Ambient_Temperature_C": datos.get("temperatura_ambiente"),
-        # ── vacunas ──
-        "FMD_Vaccine":        datos.get("vacuna_fmdv"),
-        "Brucellosis_Vaccine":datos.get("vacuna_brucelosis"),
-        "HS_Vaccine":         datos.get("vacuna_septicemia"),
-        "BQ_Vaccine":         datos.get("vacuna_carbon_sint"),
-        "Anthrax_Vaccine":    datos.get("vacuna_antrax"),
-    }
+    def activar(col: str):
+        if col in _COL_INDEX:
+            vec[_COL_INDEX[col]] = 1.0
 
-    valores = []
-    for col in _FEATURE_ORDER:
-        v = mapping[col]
-        valores.append(float(v) if v is not None else defaults[col])
+    # ── 1. Síntomas detectados por NLP ──────────────────────────
+    for sintoma in datos.get("sintomas_nlp", []):
+        for col in _NLP_A_DATASET.get(sintoma, []):
+            activar(col)
 
-    return np.array([valores])
+    # ── 2. Vitales → síntomas objetivos (umbrales clínicos bovinos) ──
+    temp = datos.get("temperatura")
+    if temp is not None:
+        if temp >= 39.5:
+            activar("fever"); activar("high_temp")
+        if temp >= 40.5:
+            activar("intermittent_fever")
+
+    fc = datos.get("frecuencia_cardiaca")
+    if fc is not None and fc > 100:
+        activar("high_pulse_rate"); activar("tachycardia")
+
+    fr = datos.get("frecuencia_respiratoria")
+    if fr is not None and fr > 40:
+        activar("rapid_breathing"); activar("raised_breathing"); activar("dyspnea")
+
+    ccs = datos.get("condicion_corporal")
+    if ccs is not None and ccs < 2.5:
+        activar("emaciation"); activar("weight_loss")
+
+    leche = datos.get("produccion_leche")
+    if leche is not None and leche < 5.0:
+        activar("reduction_milk_vields")
+
+    return np.array([vec])
 
 
 def predecir_enfermedad(datos: dict) -> dict:
     """
-    Ejecuta Random Forest sobre los datos del registro de sintomas.
+    Ejecuta Random Forest sobre el vector de síntomas.
 
-    `datos` debe ser un dict que puede incluir las llaves:
-    edad_meses, peso_kg, temperatura, frecuencia_cardiaca,
-    frecuencia_respiratoria, produccion_leche, condicion_corporal,
-    consumo_alimento_kg, consumo_agua_l (todas opcionales).
+    `datos` debe incluir:
+      - sintomas_nlp: list[str]  — de nlp.extraer_sintomas()
+      - temperatura, frecuencia_cardiaca, frecuencia_respiratoria,
+        condicion_corporal, produccion_leche  (todos opcionales)
 
     Retorna:
         {
-            "enfermedad": str,          # nombre en español
-            "enfermedad_codigo": str,   # nombre original del dataset (ingles)
-            "confianza": float,         # 0.0 - 1.0
+            "enfermedad": str,
+            "enfermedad_codigo": str,
+            "confianza": float,
             "severidad": "leve" | "moderada" | "alta",
-            "features_nlp": dict,       # info de soporte para PREDICCIONES.features_nlp
+            "features_nlp": dict,
         }
     """
     X = _build_feature_vector(datos)
 
     pred_idx = _random_forest.predict(X)[0]
-    probas = _random_forest.predict_proba(X)[0]
+    probas   = _random_forest.predict_proba(X)[0]
     confianza = float(probas.max())
 
     enfermedad_codigo = _label_encoder.inverse_transform([pred_idx])[0]
-    enfermedad_es = TRADUCCION_ENFERMEDADES.get(enfermedad_codigo, enfermedad_codigo)
+    enfermedad_es     = TRADUCCION_ENFERMEDADES.get(enfermedad_codigo, enfermedad_codigo)
 
-    if enfermedad_codigo == "Healthy":
-        # Si el modelo predice "sano", la severidad siempre es leve,
-        # sin importar que tan alta sea la confianza de esa prediccion.
-        severidad = "leve"
-    elif confianza >= _UMBRAL_ALTA:
+    if confianza >= _UMBRAL_ALTA:
         severidad = "alta"
     elif confianza >= _UMBRAL_MODERADA:
         severidad = "moderada"
     else:
         severidad = "leve"
 
-    # Top 3 enfermedades mas probables, para dar contexto en features_nlp
+    # Top 3 para contexto en features_nlp
     top_idx = np.argsort(probas)[::-1][:3]
     top3 = [
         {
@@ -207,36 +193,42 @@ def predecir_enfermedad(datos: dict) -> dict:
         for i in top_idx
     ]
 
+    sintomas_activos = [
+        _FEATURE_ORDER[j] for j in range(len(_FEATURE_ORDER)) if X[0][j] == 1.0
+    ]
+
     return {
-        "enfermedad": enfermedad_es,
+        "enfermedad":       enfermedad_es,
         "enfermedad_codigo": enfermedad_codigo,
-        "confianza": round(confianza, 4),
-        "severidad": severidad,
+        "confianza":        round(confianza, 4),
+        "severidad":        severidad,
         "features_nlp": {
-            "modelo": "RandomForest",
-            "version_modelo": METADATA.get("version", "1.0"),
+            "modelo":            "RandomForest",
+            "version_modelo":    METADATA.get("version", "3.0"),
+            "sintomas_activos":  sintomas_activos,
             "top_3_predicciones": top3,
-            "variables_usadas": _FEATURE_ORDER,
+            "variables_usadas":  f"{len(_FEATURE_ORDER)} síntomas binarios",
         },
     }
 
 
 def detectar_anomalia(datos: dict) -> dict:
     """
-    Ejecuta Isolation Forest sobre los datos productivos del registro.
+    Ejecuta Isolation Forest sobre el vector de síntomas.
+    Un animal con síntomas activos será detectado como anómalo.
 
     Retorna:
         {
             "es_anomalia": bool,
-            "score": float,   # mas negativo = mas anomalo
+            "score": float,
         }
     """
     X = _build_feature_vector(datos)
 
-    pred = _isolation_forest.predict(X)[0]   # -1 = anomalia, 1 = normal
+    pred  = _isolation_forest.predict(X)[0]
     score = float(_isolation_forest.score_samples(X)[0])
 
     return {
         "es_anomalia": bool(pred == -1),
-        "score": round(score, 4),
+        "score":       round(score, 4),
     }
