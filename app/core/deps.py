@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -51,6 +53,9 @@ def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado: tu cuenta esta desactivada",
         )
+
+    usuario.ultima_actividad = datetime.utcnow()
+    db.commit()
 
     return usuario
 

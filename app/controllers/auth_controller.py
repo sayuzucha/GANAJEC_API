@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 import secrets
 
@@ -16,6 +17,8 @@ from app.schemas.auth_schema import (
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.email_service import enviar_codigo
+
+logger = logging.getLogger(__name__)
 
 
 class AuthController:
@@ -40,6 +43,12 @@ class AuthController:
         db.add(nuevo)
         db.commit()
         db.refresh(nuevo)
+
+        try:
+            codigo = AuthController.crear_codigo_verificacion(db, nuevo.id, "verificacion_email")
+            enviar_codigo(nuevo.email, codigo.codigo, "verificacion_email")
+        except Exception:
+            logger.warning("Error al enviar codigo de verificacion de email", exc_info=True)
 
         token = create_access_token({"sub": nuevo.id, "rol": nuevo.rol})
         return {
@@ -67,6 +76,12 @@ class AuthController:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado: tu cuenta esta desactivada. Contacta al administrador",
+            )
+
+        if not usuario.email_verificado:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debes verificar tu correo antes de iniciar sesion",
             )
 
         token = create_access_token({"sub": usuario.id, "rol": usuario.rol})
@@ -163,11 +178,14 @@ class AuthController:
     @staticmethod
     def solicitar_recuperacion(db: Session, data: SolicitarRecuperacionRequest):
         usuario = db.query(Usuario).filter(Usuario.email == data.email).first()
-        if not usuario:
-            return {"mensaje": "Si el correo esta registrado, recibiras un codigo"}
 
-        nuevo_codigo = AuthController.crear_codigo_verificacion(db, usuario.id, "recuperacion_password")
-        enviar_codigo(usuario.email, nuevo_codigo.codigo, "recuperacion_password")
+        if usuario:
+            try:
+                nuevo_codigo = AuthController.crear_codigo_verificacion(db, usuario.id, "recuperacion_password")
+                enviar_codigo(usuario.email, nuevo_codigo.codigo, "recuperacion_password")
+            except Exception:
+                logger.warning("Error al generar o enviar codigo de recuperacion", exc_info=True)
+
         return {"mensaje": "Si el correo esta registrado, recibiras un codigo"}
 
     @staticmethod
