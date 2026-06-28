@@ -240,7 +240,7 @@ class GanaderoController:
 
             if item["severidad"] == "alta":
                 severidad_alta += 1
-            if item["enfermedad"] == predictor.TRADUCCION_ENFERMEDADES["Healthy"]:
+            if not item.get("es_anomalia", True):
                 sin_anomalias += 1
             if r.registrado_en and r.registrado_en.year == hoy.year and r.registrado_en.month == hoy.month:
                 total_este_mes += 1

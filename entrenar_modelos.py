@@ -26,7 +26,20 @@ df_test  = pd.read_csv("Testing.csv")
 print(f"Train: {len(df_train)} filas | Test: {len(df_test)} filas")
 print(f"Enfermedades: {df_train['prognosis'].nunique()}")
 
-# ── 2. Features: 93 síntomas binarios ────────────────────────────
+# ── 2. Limpieza del dataset ──────────────────────────────────────
+# El Training.csv tiene filas completamente duplicadas (~79% del total).
+# Se eliminan antes del entrenamiento para evitar overfitting espurio
+# y para que el data augmentation genere variedad real.
+dup_train = df_train.duplicated().sum()
+dup_test  = df_test.duplicated().sum()
+print(f"Duplicados en training: {dup_train} ({dup_train/len(df_train)*100:.1f}%)")
+print(f"Duplicados en test:     {dup_test}")
+
+df_train = df_train.drop_duplicates().reset_index(drop=True)
+df_test  = df_test.drop_duplicates().reset_index(drop=True)
+print(f"Train limpio: {len(df_train)} filas | Test limpio: {len(df_test)} filas")
+
+# ── 3. Features: 93 síntomas binarios ────────────────────────────
 FEATURES = [c for c in df_train.columns if c != "prognosis"]
 print(f"Features: {len(FEATURES)} síntomas binarios")
 
@@ -35,7 +48,7 @@ y_train_raw  = df_train["prognosis"].values
 X_test       = df_test[FEATURES].values
 y_test_raw   = df_test["prognosis"].values
 
-# ── 3. Codificar etiquetas ───────────────────────────────────────
+# ── 4. Codificar etiquetas ───────────────────────────────────────
 le = LabelEncoder()
 le.fit(np.concatenate([y_train_raw, y_test_raw]))
 y_train_orig = le.transform(y_train_raw)
@@ -114,17 +127,48 @@ hgb_acc = accuracy_score(y_test, hgb.predict(X_test))
 print(f"HistGradientBoosting accuracy: {hgb_acc:.4f}")
 
 # ── 7. Isolation Forest (detección de anomalías) ─────────────────
+# Se entrena SOLO con animales sanos (clase "Healthy" del dataset).
+# Así aprende qué es "normal" y puede detectar animales enfermos como anomalías.
 print("\nEntrenando Isolation Forest...")
-X_sano = np.zeros((500, len(FEATURES)))
+
+# Filtrar animales sanos del training set
+mask_sano = y_train_raw == "Healthy"
+X_sano_real = X_train_orig[mask_sano]
+print(f"  Animales sanos en training: {len(X_sano_real)}")
+
+if len(X_sano_real) >= 20:
+    X_iso_train = X_sano_real
+else:
+    # Fallback: animales con muy pocos síntomas activos (≤ 2)
+    n_sintomas = X_train_orig.sum(axis=1)
+    X_iso_train = X_train_orig[n_sintomas <= 2]
+    print(f"  Fallback — animales con ≤2 síntomas: {len(X_iso_train)}")
+    if len(X_iso_train) < 20:
+        # Último recurso: zeros con ruido gaussiano pequeño para dar variación
+        rng2 = np.random.default_rng(0)
+        X_iso_train = np.clip(
+            rng2.normal(0, 0.05, (500, len(FEATURES))), 0, 0.5
+        )
+        print("  Fallback — ruido gaussiano sobre base cero")
+
 iforest = IsolationForest(
     n_estimators=200,
-    contamination=0.05,
+    contamination=0.35,   # en la app, la mayoría de registros son de animales con síntomas
     random_state=42,
     n_jobs=-1,
 )
-iforest.fit(X_sano)
-preds_enfermos = iforest.predict(X_test)
-sens = float((preds_enfermos == -1).mean())
+iforest.fit(X_iso_train)
+
+# Evaluar: los animales de X_test son enfermos (el dataset casi no tiene "Healthy")
+# → esperamos que la mayoría se detecte como anomalía
+mask_enfermos_test = y_test_raw != "Healthy"
+X_test_enfermos = X_test[mask_enfermos_test]
+if len(X_test_enfermos) > 0:
+    preds_enfermos = iforest.predict(X_test_enfermos)
+    sens = float((preds_enfermos == -1).mean())
+else:
+    preds_enfermos = iforest.predict(X_test)
+    sens = float((preds_enfermos == -1).mean())
 print(f"Isolation Forest — detección de enfermos: {sens:.4f}")
 
 # ── 8. Guardar modelos ───────────────────────────────────────────
@@ -141,10 +185,14 @@ with open(SAVE_DIR + "label_encoder.pkl", "wb") as f:
     pickle.dump(le, f)
 
 # ── 9. Calcular umbrales de severidad ────────────────────────────
-probas_test = rf.predict_proba(X_test)
-max_probas  = probas_test.max(axis=1)
-umbral_mod  = float(np.percentile(max_probas, 33))
-umbral_alta = float(np.percentile(max_probas, 66))
+# El RF tiene 100% accuracy en el test set → max_proba ≈ 1.0 para todos.
+# Usar percentiles de ese conjunto daría umbrales de 1.0 (bug: todo sería "leve").
+# En su lugar usamos valores fijos clínicamente razonables:
+#   - leve:     confianza < 0.40  (modelo inseguro, posible sin enfermedad)
+#   - moderada: 0.40 ≤ confianza < 0.75
+#   - alta:     confianza ≥ 0.75  (modelo muy seguro → alerta)
+umbral_mod  = 0.40
+umbral_alta = 0.75
 print(f"Umbrales severidad — moderada: {umbral_mod:.3f} | alta: {umbral_alta:.3f}")
 
 # ── 10. Metadata ─────────────────────────────────────────────────

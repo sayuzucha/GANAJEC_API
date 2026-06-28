@@ -130,21 +130,21 @@
     "copias_por_ejemplo": 15,
     "tasa_eliminacion_min": 0.2,
     "tasa_eliminacion_max": 0.7,
-    "filas_totales": 32704
+    "filas_totales": 6928
   },
   "metricas": {
     "random_forest_accuracy": 1.0,
     "hgb_accuracy": 1.0,
-    "isolation_forest_deteccion_enfermos": 0.0,
+    "isolation_forest_deteccion_enfermos": 0.4231,
     "accuracy_sintomas_parciales": {
-      "75%": 0.9904,
-      "50%": 0.9692,
-      "30%": 0.6192
+      "75%": 0.9962,
+      "50%": 0.9769,
+      "30%": 0.6423
     }
   },
   "umbrales_severidad": {
-    "moderada": 1.0,
-    "alta": 1.0
+    "moderada": 0.4,
+    "alta": 0.75
   },
   "notas": {
     "random_forest": "Modelo principal. 26 clases. 93 síntomas binarios. Entrenado con síntomas parciales.",

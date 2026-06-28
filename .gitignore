@@ -35,3 +35,4 @@ Training.csv
 # Modelos
 app/ml/models/random_forest.pkl
 *.pkl
+entregables/
