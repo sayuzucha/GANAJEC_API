@@ -20,10 +20,11 @@ class Settings:
     DB_HOST = os.getenv("DB_HOST", "localhost")
     DB_PORT = os.getenv("DB_PORT", "3306")
     DB_USER = os.getenv("DB_USER", "root")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "goku123")
     DB_NAME = os.getenv("DB_NAME", "ganajec_db")
 
     SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esta-clave-en-produccion")
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 
     _WEAK_KEY = "cambia-esta-clave-en-produccion"
     if SECRET_KEY == _WEAK_KEY:
