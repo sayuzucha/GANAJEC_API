@@ -240,7 +240,7 @@ class GanaderoController:
 
             if item["severidad"] == "alta":
                 severidad_alta += 1
-            if item["enfermedad"] == predictor.TRADUCCION_ENFERMEDADES["Healthy"]:
+            if not item.get("es_anomalia", True):
                 sin_anomalias += 1
             if r.registrado_en and r.registrado_en.year == hoy.year and r.registrado_en.month == hoy.month:
                 total_este_mes += 1
@@ -302,26 +302,14 @@ class GanaderoController:
                          (hoy.month - bovino.fecha_nacimiento.month)
 
         datos_ml = {
-            # ── vitales (originales) ──
-            "edad_meses":           edad_meses,
-            "peso_kg":              bovino.peso_kg,
-            "temperatura":          nuevo.temperatura,
-            "frecuencia_cardiaca":  nuevo.frecuencia_cardiaca,
+            # ── síntomas detectados por NLP (fuente principal del modelo) ──
+            "sintomas_nlp": sintomas_fusionados,
+            # ── vitales: se convierten a síntomas binarios por umbrales ──
+            "temperatura":            nuevo.temperatura,
+            "frecuencia_cardiaca":    nuevo.frecuencia_cardiaca,
             "frecuencia_respiratoria": nuevo.frecuencia_respiratoria,
-            "produccion_leche":     nuevo.produccion_leche,
-            "condicion_corporal":   nuevo.condicion_corporal,
-            "consumo_alimento_kg":  nuevo.consumo_alimento_kg,
-            "consumo_agua_l":       nuevo.consumo_agua_l,
-            # ── nuevos campos opcionales (mejoran el modelo) ──
-            "parity":                      data.parity,
-            "dias_en_leche":               data.dias_en_leche,
-            "produccion_semana_anterior":  data.produccion_semana_anterior,
-            "temperatura_ambiente":        data.temperatura_ambiente,
-            "vacuna_fmdv":                 data.vacuna_fmdv,
-            "vacuna_brucelosis":           data.vacuna_brucelosis,
-            "vacuna_septicemia":           data.vacuna_septicemia,
-            "vacuna_carbon_sint":          data.vacuna_carbon_sint,
-            "vacuna_antrax":               data.vacuna_antrax,
+            "produccion_leche":       nuevo.produccion_leche,
+            "condicion_corporal":     nuevo.condicion_corporal,
         }
 
         # ── 1. Random Forest: predecir enfermedad ──────────────────

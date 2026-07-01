@@ -22,7 +22,11 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ── Datos ───────────────────────────────────────────────
 global_cattle_disease_detection_dataset.csv
+Testing.csv
+Training.csv
 
 # Documentación
 *.html
@@ -31,3 +35,4 @@ global_cattle_disease_detection_dataset.csv
 # Modelos
 app/ml/models/random_forest.pkl
 *.pkl
+entregables/

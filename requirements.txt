@@ -12,3 +12,4 @@ numpy==1.26.4
 spacy==3.8.13
 firebase-admin==6.5.0
 slowapi==0.1.9
+stripe

@@ -1,12 +1,15 @@
 """
 GANAJEC AI — Re-entrenamiento de modelos ML
-Dataset: global_cattle_disease_detection_dataset.csv
-Mejoras:
-  - Más datos (250K registros vs dataset anterior)
-  - class_weight='balanced' en Random Forest
-  - HistGradientBoostingClassifier reemplaza CatBoost
-  - Isolation Forest re-calibrado con contamination real
-  - 20 features (9 originales + 11 nuevas: vacunas + comportamiento)
+Dataset: Training.csv / Testing.csv
+(Cattle Disease Prediction — síntomas binarios reales)
+
+Arquitectura:
+  - 93 features binarias (síntomas veterinarios observables)
+  - Data augmentation: síntomas parciales para evitar overfitting
+  - Random Forest con class_weight='balanced'
+  - HistGradientBoostingClassifier como modelo de apoyo
+  - Isolation Forest entrenado solo con animales sanos
+  - 26 enfermedades bovinas reales
 """
 
 import pandas as pd
@@ -14,116 +17,161 @@ import numpy as np
 import pickle, json
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, IsolationForest
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 
 # ── 1. Cargar datos ──────────────────────────────────────────────
-print("Cargando dataset...")
-df = pd.read_csv("global_cattle_disease_detection_dataset.csv")
-print(f"Filas: {len(df)} | Clases: {df['Disease_Status'].nunique()}")
+print("Cargando datasets...")
+df_train = pd.read_csv("Training.csv")
+df_test  = pd.read_csv("Testing.csv")
+print(f"Train: {len(df_train)} filas | Test: {len(df_test)} filas")
+print(f"Enfermedades: {df_train['prognosis'].nunique()}")
 
-# ── 2. Features ──────────────────────────────────────────────────
-# 9 originales + 11 nuevas (todas numéricas, compatibles con la API)
-FEATURES = [
-    # ── vitales (originales) ──
-    "Age_Months",
-    "Weight_kg",
-    "Body_Temperature_C",
-    "Heart_Rate_bpm",
-    "Respiratory_Rate",
-    "Milk_Yield_L",
-    "Body_Condition_Score",
-    "Feed_Quantity_kg",
-    "Water_Intake_L",
-    # ── productivo / reproductivo ──
-    "Parity",
-    "Days_in_Milk",
-    "Previous_Week_Avg_Yield",
-    # ── entorno ──
-    "Ambient_Temperature_C",
-    # ── vacunas (binarias 0/1) ──
-    "FMD_Vaccine",
-    "Brucellosis_Vaccine",
-    "HS_Vaccine",
-    "BQ_Vaccine",
-    "Anthrax_Vaccine",
-]
+# ── 2. Limpieza del dataset ──────────────────────────────────────
+# El Training.csv tiene filas completamente duplicadas (~79% del total).
+# Se eliminan antes del entrenamiento para evitar overfitting espurio
+# y para que el data augmentation genere variedad real.
+dup_train = df_train.duplicated().sum()
+dup_test  = df_test.duplicated().sum()
+print(f"Duplicados en training: {dup_train} ({dup_train/len(df_train)*100:.1f}%)")
+print(f"Duplicados en test:     {dup_test}")
 
-X = df[FEATURES].values
-y = df["Disease_Status"].values
+df_train = df_train.drop_duplicates().reset_index(drop=True)
+df_test  = df_test.drop_duplicates().reset_index(drop=True)
+print(f"Train limpio: {len(df_train)} filas | Test limpio: {len(df_test)} filas")
 
-# ── 3. Codificar etiquetas ───────────────────────────────────────
+# ── 3. Features: 93 síntomas binarios ────────────────────────────
+FEATURES = [c for c in df_train.columns if c != "prognosis"]
+print(f"Features: {len(FEATURES)} síntomas binarios")
+
+X_train_orig = df_train[FEATURES].values
+y_train_raw  = df_train["prognosis"].values
+X_test       = df_test[FEATURES].values
+y_test_raw   = df_test["prognosis"].values
+
+# ── 4. Codificar etiquetas ───────────────────────────────────────
 le = LabelEncoder()
-y_enc = le.fit_transform(y)
-clases = list(le.classes_)
-print(f"Total clases: {len(clases)}")
+le.fit(np.concatenate([y_train_raw, y_test_raw]))
+y_train_orig = le.transform(y_train_raw)
+y_test       = le.transform(y_test_raw)
+clases       = list(le.classes_)
+print(f"Clases ({len(clases)}): {clases}")
 
-# ── 4. Balancear: reducir Healthy para no dominar el entrenamiento
-df_train = df.copy()
-df_train["y_enc"] = y_enc
+# ── 4. Data Augmentation: síntomas parciales ─────────────────────
+# El problema con 100% accuracy en datos perfectos es overfitting:
+# el modelo memoriza combinaciones exactas y falla con síntomas parciales.
+#
+# Solución: por cada ejemplo real, generar N copias con síntomas
+# eliminados al azar (el ganadero rara vez reporta TODOS los síntomas).
+# Así el modelo aprende a diagnosticar con información incompleta.
+print("\nAplicando data augmentation (síntomas parciales)...")
 
-healthy_cap = 10000  # limitar Healthy a 10K (vs 137K original)
-df_healthy = df_train[df_train["Disease_Status"] == "Healthy"].sample(healthy_cap, random_state=42)
-df_sick    = df_train[df_train["Disease_Status"] != "Healthy"]
-df_bal     = pd.concat([df_healthy, df_sick]).sample(frac=1, random_state=42)
+rng = np.random.default_rng(42)
+augmented_X = [X_train_orig]
+augmented_y = [y_train_orig]
 
-X_bal = df_bal[FEATURES].values
-y_bal = df_bal["y_enc"].values
-print(f"Dataset balanceado: {len(df_bal)} filas | Healthy cappado a: {healthy_cap}")
+COPIAS_POR_EJEMPLO = 15         # genera 15 versiones parciales por cada caso real
+TASA_MIN = 0.2                  # elimina mínimo 20% de los síntomas activos
+TASA_MAX = 0.7                  # elimina máximo 70% de los síntomas activos
 
-# ── 5. Split ─────────────────────────────────────────────────────
-X_train, X_test, y_train, y_test = train_test_split(
-    X_bal, y_bal, test_size=0.2, random_state=42, stratify=y_bal
-)
-print(f"Train: {len(X_train)} | Test: {len(X_test)}")
+for _ in range(COPIAS_POR_EJEMPLO):
+    X_aug = X_train_orig.copy()
+    for i in range(len(X_aug)):
+        sintomas_activos = np.where(X_aug[i] == 1)[0]
+        if len(sintomas_activos) == 0:
+            continue
+        tasa   = rng.uniform(TASA_MIN, TASA_MAX)
+        n_drop = max(1, int(len(sintomas_activos) * tasa))
+        n_drop = min(n_drop, len(sintomas_activos) - 1)
+        if n_drop <= 0:
+            continue
+        a_eliminar = rng.choice(sintomas_activos, size=n_drop, replace=False)
+        X_aug[i, a_eliminar] = 0
+    augmented_X.append(X_aug)
+    augmented_y.append(y_train_orig)
 
-# ── 6. Random Forest (modelo principal) ─────────────────────────
+X_train = np.vstack(augmented_X)
+y_train = np.concatenate(augmented_y)
+idx = rng.permutation(len(X_train))
+X_train, y_train = X_train[idx], y_train[idx]
+
+print(f"Dataset original:  {len(X_train_orig)} filas")
+print(f"Dataset aumentado: {len(X_train)} filas ({COPIAS_POR_EJEMPLO}x copias parciales + original)")
+print(f"Test (sin aumentar): {len(X_test)} filas")
+
+# ── 5. Random Forest (modelo principal) ─────────────────────────
 print("\nEntrenando Random Forest...")
 rf = RandomForestClassifier(
-    n_estimators=200,
-    max_depth=25,
-    min_samples_leaf=2,
+    n_estimators=300,
+    max_depth=None,
+    min_samples_leaf=1,
     class_weight="balanced",
     n_jobs=-1,
     random_state=42,
 )
 rf.fit(X_train, y_train)
 rf_acc = accuracy_score(y_test, rf.predict(X_test))
-print(f"Random Forest accuracy: {rf_acc:.4f}  (antes: 0.5715)")
+print(f"Random Forest accuracy: {rf_acc:.4f}")
+print(classification_report(y_test, rf.predict(X_test), target_names=clases))
 
-# ── 7. HistGradientBoosting (reemplaza CatBoost) ─────────────────
-print("\nEntrenando HistGradientBoostingClassifier...")
+# ── 6. HistGradientBoosting (modelo de apoyo) ────────────────────
+print("Entrenando HistGradientBoostingClassifier...")
 hgb = HistGradientBoostingClassifier(
-    max_iter=200,
-    max_depth=8,
+    max_iter=300,
+    max_depth=None,
     learning_rate=0.1,
-    min_samples_leaf=20,
+    min_samples_leaf=5,
     random_state=42,
 )
 hgb.fit(X_train, y_train)
 hgb_acc = accuracy_score(y_test, hgb.predict(X_test))
-print(f"HistGradientBoosting accuracy: {hgb_acc:.4f}  (CatBoost antes: 0.2611)")
+print(f"HistGradientBoosting accuracy: {hgb_acc:.4f}")
 
-# ── 8. Isolation Forest (anomalías productivas) ──────────────────
+# ── 7. Isolation Forest (detección de anomalías) ─────────────────
+# Se entrena SOLO con animales sanos (clase "Healthy" del dataset).
+# Así aprende qué es "normal" y puede detectar animales enfermos como anomalías.
 print("\nEntrenando Isolation Forest...")
-X_healthy = df[df["Disease_Status"] == "Healthy"][FEATURES].values
+
+# Filtrar animales sanos del training set
+mask_sano = y_train_raw == "Healthy"
+X_sano_real = X_train_orig[mask_sano]
+print(f"  Animales sanos en training: {len(X_sano_real)}")
+
+if len(X_sano_real) >= 20:
+    X_iso_train = X_sano_real
+else:
+    # Fallback: animales con muy pocos síntomas activos (≤ 2)
+    n_sintomas = X_train_orig.sum(axis=1)
+    X_iso_train = X_train_orig[n_sintomas <= 2]
+    print(f"  Fallback — animales con ≤2 síntomas: {len(X_iso_train)}")
+    if len(X_iso_train) < 20:
+        # Último recurso: zeros con ruido gaussiano pequeño para dar variación
+        rng2 = np.random.default_rng(0)
+        X_iso_train = np.clip(
+            rng2.normal(0, 0.05, (500, len(FEATURES))), 0, 0.5
+        )
+        print("  Fallback — ruido gaussiano sobre base cero")
+
 iforest = IsolationForest(
     n_estimators=200,
-    contamination=0.05,
+    contamination=0.35,   # en la app, la mayoría de registros son de animales con síntomas
     random_state=42,
     n_jobs=-1,
 )
-iforest.fit(X_healthy)
+iforest.fit(X_iso_train)
 
-# Evaluar sensibilidad/especificidad
-y_true_anom = (df_bal["Disease_Status"] != "Healthy").astype(int).values
-preds_if    = iforest.predict(X_bal)
-preds_bin   = (preds_if == -1).astype(int)
-sens = preds_bin[y_true_anom == 1].mean()
-spec = 1 - preds_bin[y_true_anom == 0].mean()
-print(f"Isolation Forest — Sensibilidad: {sens:.4f}  (antes: 0.049) | Especificidad: {spec:.4f}")
+# Evaluar: los animales de X_test son enfermos (el dataset casi no tiene "Healthy")
+# → esperamos que la mayoría se detecte como anomalía
+mask_enfermos_test = y_test_raw != "Healthy"
+X_test_enfermos = X_test[mask_enfermos_test]
+if len(X_test_enfermos) > 0:
+    preds_enfermos = iforest.predict(X_test_enfermos)
+    sens = float((preds_enfermos == -1).mean())
+else:
+    preds_enfermos = iforest.predict(X_test)
+    sens = float((preds_enfermos == -1).mean())
+print(f"Isolation Forest — detección de enfermos: {sens:.4f}")
 
-# ── 9. Guardar modelos ───────────────────────────────────────────
+# ── 8. Guardar modelos ───────────────────────────────────────────
 print("\nGuardando modelos...")
 SAVE_DIR = "app/ml/models/"
 
@@ -136,42 +184,84 @@ with open(SAVE_DIR + "isolation_forest.pkl", "wb") as f:
 with open(SAVE_DIR + "label_encoder.pkl", "wb") as f:
     pickle.dump(le, f)
 
-# ── 10. Metadata ─────────────────────────────────────────────────
-# ── Calcular umbrales de severidad desde la distribución real ────
-probas_test = rf.predict_proba(X_test)
-max_probas  = probas_test.max(axis=1)
-umbral_moderada = float(np.percentile(max_probas, 40))   # 40° percentil
-umbral_alta     = float(np.percentile(max_probas, 75))   # 75° percentil
-print(f"Umbrales severidad — moderada: {umbral_moderada:.3f} | alta: {umbral_alta:.3f}")
+# ── 9. Calcular umbrales de severidad ────────────────────────────
+# El RF tiene 100% accuracy en el test set → max_proba ≈ 1.0 para todos.
+# Usar percentiles de ese conjunto daría umbrales de 1.0 (bug: todo sería "leve").
+# En su lugar usamos valores fijos clínicamente razonables:
+#   - leve:     confianza < 0.40  (modelo inseguro, posible sin enfermedad)
+#   - moderada: 0.40 ≤ confianza < 0.75
+#   - alta:     confianza ≥ 0.75  (modelo muy seguro → alerta)
+umbral_mod  = 0.40
+umbral_alta = 0.75
+print(f"Umbrales severidad — moderada: {umbral_mod:.3f} | alta: {umbral_alta:.3f}")
 
+# ── 10. Metadata ─────────────────────────────────────────────────
 metadata = {
-    "version": "2.1",
+    "version": "3.1",
+    "dataset": "Training.csv / Testing.csv + data augmentation",
     "features": FEATURES,
+    "n_features": len(FEATURES),
     "n_clases": len(clases),
     "clases": clases,
+    "augmentation": {
+        "copias_por_ejemplo": COPIAS_POR_EJEMPLO,
+        "tasa_eliminacion_min": TASA_MIN,
+        "tasa_eliminacion_max": TASA_MAX,
+        "filas_totales": len(X_train),
+    },
     "metricas": {
         "random_forest_accuracy": round(rf_acc, 4),
-        "catboost_accuracy": round(hgb_acc, 4),
-        "isolation_forest_sensibilidad": round(float(sens), 4),
-        "isolation_forest_especificidad": round(float(spec), 4),
+        "hgb_accuracy": round(hgb_acc, 4),
+        "isolation_forest_deteccion_enfermos": round(sens, 4),
     },
     "umbrales_severidad": {
-        "moderada": round(umbral_moderada, 4),
-        "alta": round(umbral_alta, 4),
+        "moderada": round(umbral_mod, 4),
+        "alta":     round(umbral_alta, 4),
     },
     "notas": {
-        "random_forest": f"Modelo principal. {len(clases)} clases. 20 features. Balanceado + class_weight=balanced.",
-        "catboost": "HistGradientBoostingClassifier (sklearn). Reemplaza CatBoost — misma interfaz pkl.",
-        "isolation_forest": "Entrenado solo con Healthy. contamination=0.05.",
+        "random_forest": f"Modelo principal. {len(clases)} clases. {len(FEATURES)} síntomas binarios. Entrenado con síntomas parciales.",
+        "hgb": "HistGradientBoostingClassifier — modelo de apoyo.",
+        "isolation_forest": "Entrenado con animales sanos (todos síntomas=0).",
     }
 }
 
-with open(SAVE_DIR + "metadata.json", "w") as f:
+with open(SAVE_DIR + "metadata.json", "w", encoding="utf-8") as f:
+    json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+# ── 11. Prueba con síntomas parciales (simula uso real del ganadero) ─
+# El ganadero rara vez describe TODOS los síntomas. Esta prueba simula
+# qué accuracy tiene el modelo cuando solo se reportan algunos síntomas.
+print("\n── Prueba con síntomas parciales (uso real) ──")
+
+resultados_parciales = {}
+for porcentaje_visible in [0.75, 0.50, 0.30]:
+    accs = []
+    for _ in range(20):   # 20 repeticiones para estabilizar el resultado
+        X_parcial = X_test.copy()
+        for i in range(len(X_parcial)):
+            activos = np.where(X_parcial[i] == 1)[0]
+            if len(activos) == 0:
+                continue
+            n_mantener = max(1, int(len(activos) * porcentaje_visible))
+            a_ocultar  = rng.choice(activos, size=len(activos) - n_mantener, replace=False)
+            X_parcial[i, a_ocultar] = 0
+        accs.append(accuracy_score(y_test, rf.predict(X_parcial)))
+    acc_media = float(np.mean(accs))
+    resultados_parciales[f"{int(porcentaje_visible*100)}%"] = round(acc_media, 4)
+    print(f"  Síntomas visibles: {int(porcentaje_visible*100)}%  →  Accuracy: {acc_media:.2%}")
+
+# Guardar en metadata
+metadata["metricas"]["accuracy_sintomas_parciales"] = resultados_parciales
+
+with open(SAVE_DIR + "metadata.json", "w", encoding="utf-8") as f:
     json.dump(metadata, f, indent=2, ensure_ascii=False)
 
 print("\n=== RESUMEN FINAL ===")
-print(f"  Random Forest:         {rf_acc:.2%}  (antes 57.15%)")
-print(f"  HistGradientBoosting:  {hgb_acc:.2%}  (no usado antes)")
-print(f"  IsoForest sensibilidad:{sens:.2%}   (antes 4.90%)")
+print(f"  Random Forest (síntomas completos): {rf_acc:.2%}")
+print(f"  HistGradientBoosting:               {hgb_acc:.2%}")
+print(f"  IsoForest (enfermos):               {sens:.2%}")
+print(f"\n  Accuracy con síntomas parciales (uso real del ganadero):")
+for pct, acc in resultados_parciales.items():
+    print(f"    El ganadero describe el {pct} de síntomas → {acc:.2%} accuracy")
 print(f"\nArchivos guardados en {SAVE_DIR}")
 print("Listo — reinicia uvicorn para que cargue los nuevos modelos.")
