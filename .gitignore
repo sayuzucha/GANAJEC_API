@@ -31,3 +31,11 @@ global_cattle_disease_detection_dataset.csv
 # Modelos
 app/ml/models/random_forest.pkl
 *.pkl
+
+
+ALONSO/
+DIANA/
+MineriaRamses/
+mineriaHoracio/
+Training.csv
+Testing.csv
