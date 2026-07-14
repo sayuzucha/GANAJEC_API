@@ -5,7 +5,7 @@ import secrets
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import Usuario, CodigoVerificacion
+from app.models import Usuario, CodigoVerificacion, PreRegistro
 from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
@@ -14,6 +14,7 @@ from app.schemas.auth_schema import (
     ReenviarCodigoRequest,
     SolicitarRecuperacionRequest,
     RestablecerPasswordRequest,
+    PreRegistroRequest,
 )
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.email_service import enviar_codigo
@@ -131,33 +132,98 @@ class AuthController:
     @staticmethod
     def verificar_email(db: Session, data: VerificarEmailRequest):
         usuario = db.query(Usuario).filter(Usuario.email == data.email).first()
-        if not usuario:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No encontrado: no existe un usuario con el correo '{data.email}'",
-            )
 
-        codigo_valido = (
-            db.query(CodigoVerificacion)
+        # Si el usuario ya existe en la tabla real, flujo normal
+        if usuario:
+            codigo_valido = (
+                db.query(CodigoVerificacion)
+                .filter(
+                    CodigoVerificacion.usuario_id == usuario.id,
+                    CodigoVerificacion.codigo == data.codigo,
+                    CodigoVerificacion.tipo == "verificacion_email",
+                    CodigoVerificacion.usado == False,
+                    CodigoVerificacion.expira_en > datetime.utcnow(),
+                )
+                .first()
+            )
+            if not codigo_valido:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Codigo invalido o expirado",
+                )
+
+            usuario.email_verificado = True
+            codigo_valido.usado = True
+            db.commit()
+            return {"mensaje": "Correo verificado correctamente"}
+
+        # Si no existe, buscar en pre_registros (flujo de pre-registro)
+        pre = (
+            db.query(PreRegistro)
             .filter(
-                CodigoVerificacion.usuario_id == usuario.id,
-                CodigoVerificacion.codigo == data.codigo,
-                CodigoVerificacion.tipo == "verificacion_email",
-                CodigoVerificacion.usado == False,
-                CodigoVerificacion.expira_en > datetime.utcnow(),
+                PreRegistro.email == data.email,
+                PreRegistro.codigo == data.codigo,
+                PreRegistro.usado == False,
+                PreRegistro.expira_en > datetime.utcnow(),
             )
             .first()
         )
-        if not codigo_valido:
+        if not pre:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Codigo invalido o expirado",
             )
 
-        usuario.email_verificado = True
-        codigo_valido.usado = True
+        nuevo = Usuario(
+            nombre=pre.nombre,
+            email=pre.email,
+            password_hash=pre.password_hash,
+            rol=pre.rol,
+            activo=True,
+            email_verificado=True,
+        )
+        db.add(nuevo)
         db.commit()
-        return {"mensaje": "Correo verificado correctamente"}
+        db.refresh(nuevo)
+
+        pre.usado = True
+        db.commit()
+
+        token = create_access_token({"sub": nuevo.id, "rol": nuevo.rol})
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "usuario": nuevo.to_dict(),
+        }
+
+    @staticmethod
+    def pre_register(db: Session, data: PreRegistroRequest):
+        existe = db.query(Usuario).filter(Usuario.email == data.email).first()
+        if existe:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Conflicto: ya existe un usuario registrado con el correo '{data.email}'",
+            )
+
+        codigo = AuthController.generar_codigo()
+
+        pre = PreRegistro(
+            nombre=data.nombre,
+            email=data.email,
+            password_hash=hash_password(data.password),
+            rol=data.rol,
+            codigo=codigo,
+            expira_en=datetime.utcnow() + timedelta(minutes=15),
+        )
+        db.add(pre)
+        db.commit()
+
+        try:
+            enviar_codigo(data.email, codigo, "verificacion_email")
+        except Exception:
+            logger.warning("Error al enviar codigo de pre-registro", exc_info=True)
+
+        return {"mensaje": "Codigo de verificacion enviado al correo"}
 
     @staticmethod
     def reenviar_codigo(db: Session, data: ReenviarCodigoRequest):

@@ -11,6 +11,7 @@ from app.models.alerta import Alerta, Notificacion
 from app.models.plan import Plan, Suscripcion
 from app.models.configuracion_sistema import AuditoriaLog, ConfiguracionSistema
 from app.models.codigo_verificacion import CodigoVerificacion
+from app.models.pre_registro import PreRegistro
 from app.models.associations import rancho_veterinario
 from app.models.veterinario import Veterinario
 

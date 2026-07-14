@@ -42,6 +42,13 @@ class SolicitarRecuperacionRequest(BaseModel):
     email: EmailStr
 
 
+class PreRegistroRequest(BaseModel):
+    nombre: str = Field(..., min_length=3, examples=["Jared Torres Morga"])
+    email: EmailStr = Field(..., examples=["jared@ganajec.ai"])
+    password: str = Field(..., min_length=8, examples=["claveSegura123"])
+    rol: str = Field(..., pattern="^(ganadero|dueno)$", examples=["ganadero"])
+
+
 class RestablecerPasswordRequest(BaseModel):
     email: EmailStr
     codigo: str = Field(..., min_length=6, max_length=6, examples=["048213"])

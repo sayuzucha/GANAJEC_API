@@ -12,6 +12,7 @@ from app.schemas.auth_schema import (
     ReenviarCodigoRequest,
     SolicitarRecuperacionRequest,
     RestablecerPasswordRequest,
+    PreRegistroRequest,
 )
 
 router = APIRouter()
@@ -22,6 +23,12 @@ router = APIRouter()
 @limiter.limit("3/minute")
 async def register(request: Request, data: RegisterRequest, db: Session = Depends(get_db)):
     return AuthController.register(db, data)
+
+
+@router.post("/pre-register")
+@limiter.limit("3/minute")
+async def pre_register(request: Request, data: PreRegistroRequest, db: Session = Depends(get_db)):
+    return AuthController.pre_register(db, data)
 
 
 # Login: max 5 intentos por minuto desde la misma IP (anti brute-force)
