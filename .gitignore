@@ -36,3 +36,7 @@ Training.csv
 app/ml/models/random_forest.pkl
 *.pkl
 entregables/
+DIANA
+mineriaHoracio
+MineriaRamses
+package-lock.json
