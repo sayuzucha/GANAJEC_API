@@ -1,7 +1,12 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import Usuario, Rancho, Bovino, AuditoriaLog, ConfiguracionSistema
+from app.models import (
+    Usuario, Rancho, Bovino, AuditoriaLog, ConfiguracionSistema,
+    CodigoVerificacion, PreRegistro, Notificacion, Alerta,
+    RegistroSintoma, Prediccion,
+)
+from app.models.associations import rancho_veterinario
 from app.schemas.general_schema import UsuarioUpdate, ConfiguracionUpdate
 
 
@@ -106,11 +111,72 @@ class AdminController:
             )
 
         nombre = usuario.nombre
+        email = usuario.email
+        rol = usuario.rol
+
+        # 1. codigos_verificacion
+        db.query(CodigoVerificacion).filter(
+            CodigoVerificacion.usuario_id == usuario.id
+        ).delete(synchronize_session=False)
+
+        # 2. pre_registros (vinculados por email)
+        db.query(PreRegistro).filter(
+            PreRegistro.email == email
+        ).delete(synchronize_session=False)
+
+        # 3. notificaciones
+        db.query(Notificacion).filter(
+            Notificacion.usuario_id == usuario.id
+        ).delete(synchronize_session=False)
+
+        # 4. alertas
+        db.query(Alerta).filter(
+            Alerta.ganadero_id == usuario.id
+        ).delete(synchronize_session=False)
+
+        # 5. registros_sintomas de sus bovinos
+        bovino_ids = [b.id for b in
+                      db.query(Bovino.id).filter(Bovino.ganadero_id == usuario.id).all()]
+        if bovino_ids:
+            # predicciones de esos registros
+            db.query(Prediccion).filter(
+                Prediccion.registro_id.in_(
+                    db.query(RegistroSintoma.id).filter(
+                        RegistroSintoma.bovino_id.in_(bovino_ids)
+                    )
+                )
+            ).delete(synchronize_session=False)
+
+            # 6. registros_sintomas
+            db.query(RegistroSintoma).filter(
+                RegistroSintoma.bovino_id.in_(bovino_ids)
+            ).delete(synchronize_session=False)
+
+        # 7. bovinos
+        db.query(Bovino).filter(
+            Bovino.ganadero_id == usuario.id
+        ).delete(synchronize_session=False)
+
+        # 8. ranchos (si es dueño) — primero la tabla asociación
+        rancho_ids = [r.id for r in
+                      db.query(Rancho).filter(Rancho.dueno_id == usuario.id).all()]
+        if rancho_ids:
+            db.execute(
+                rancho_veterinario.delete().where(
+                    rancho_veterinario.c.rancho_id.in_(rancho_ids)
+                )
+            )
+
+            # 9. ranchos
+            db.query(Rancho).filter(
+                Rancho.id.in_(rancho_ids)
+            ).delete(synchronize_session=False)
+
         log = AuditoriaLog(
             usuario_id=admin_actual.id,
             accion="elimino_usuario",
             entidad_afectada=f"usuarios:{usuario.id}",
-            detalle={"nombre": nombre, "email": usuario.email, "rol": usuario.rol},
+            detalle={"nombre": nombre, "email": email, "rol": rol},
         )
         db.add(log)
         db.delete(usuario)
