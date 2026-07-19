@@ -126,20 +126,18 @@ def poblar_datos():
         db.add(notif)
 
         # ── Planes y suscripcion ───────────────────
-        plan_basico = Plan(
-            nombre="Basico", precio_mensual=499.0, limite_bovinos=20,
-            permisos={"alertas": True, "predicciones": True, "reportes": False}, activo=True,
-        )
-        plan_premium = Plan(
-            nombre="Premium", precio_mensual=999.0, limite_bovinos=100,
+        plan_pro = Plan(
+            nombre="Pro", precio_mensual=200.0, precio_anual=2000.0,
+            limite_bovinos=100,
             permisos={"alertas": True, "predicciones": True, "reportes": True}, activo=True,
         )
-        db.add_all([plan_basico, plan_premium])
+        db.add(plan_pro)
         db.commit()
 
         suscripcion = Suscripcion(
-            usuario_id=dueno.id, plan_id=plan_basico.id,
-            inicio=datetime.date(2026, 6, 1), fin=None, activa=True,
+            usuario_id=dueno.id, plan_id=plan_pro.id,
+            tipo_suscripcion="mensual",
+            inicio=datetime.date(2026, 6, 1), fin=datetime.date(2026, 7, 1), activa=True,
         )
         db.add(suscripcion)
 

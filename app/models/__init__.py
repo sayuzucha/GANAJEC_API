@@ -9,6 +9,7 @@ from app.models.registro_sintoma import RegistroSintoma, Prediccion
 from app.models.historial_productivo import HistorialProductivo
 from app.models.alerta import Alerta, Notificacion
 from app.models.plan import Plan, Suscripcion
+from app.models.payment import Payment
 from app.models.configuracion_sistema import AuditoriaLog, ConfiguracionSistema
 from app.models.codigo_verificacion import CodigoVerificacion
 from app.models.pre_registro import PreRegistro
@@ -26,6 +27,7 @@ __all__ = [
     "Notificacion",
     "Plan",
     "Suscripcion",
+    "Payment",
     "AuditoriaLog",
     "ConfiguracionSistema",
     "CodigoVerificacion",

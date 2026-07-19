@@ -216,12 +216,20 @@ class AuthController:
             expira_en=datetime.utcnow() + timedelta(minutes=15),
         )
         db.add(pre)
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Error al guardar pre-registro en BD")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al procesar el pre-registro. Intenta de nuevo.",
+            )
 
         try:
             enviar_codigo(data.email, codigo, "verificacion_email")
         except Exception:
-            logger.warning("Error al enviar codigo de pre-registro", exc_info=True)
+            logger.warning("Error al enviar codigo de pre-registro a %s", data.email, exc_info=True)
 
         return {"mensaje": "Codigo de verificacion enviado al correo"}
 

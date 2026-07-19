@@ -11,6 +11,7 @@ class Plan(Base, UUIDMixin):
 
     nombre = Column(String(100), nullable=False)
     precio_mensual = Column(Float, nullable=False)
+    precio_anual = Column(Float, nullable=True)
     limite_bovinos = Column(Integer, nullable=False)
     permisos = Column(JSON, nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
@@ -24,6 +25,7 @@ class Plan(Base, UUIDMixin):
             "id": self.id,
             "nombre": self.nombre,
             "precio_mensual": self.precio_mensual,
+            "precio_anual": self.precio_anual,
             "limite_bovinos": self.limite_bovinos,
             "permisos": self.permisos,
             "activo": self.activo,
@@ -36,6 +38,7 @@ class Suscripcion(Base, UUIDMixin):
 
     usuario_id = Column(String(36), ForeignKey("usuarios.id"), nullable=False)
     plan_id = Column(String(36), ForeignKey("planes.id"), nullable=False)
+    tipo_suscripcion = Column(String(20), nullable=False, default="mensual")  # mensual | anual
 
     inicio = Column(Date, nullable=False)
     fin = Column(Date, nullable=True)
@@ -50,6 +53,7 @@ class Suscripcion(Base, UUIDMixin):
             "id": self.id,
             "usuario_id": self.usuario_id,
             "plan_id": self.plan_id,
+            "tipo_suscripcion": self.tipo_suscripcion,
             "plan": self.plan.to_dict() if self.plan else None,
             "inicio": self.inicio.isoformat() if self.inicio else None,
             "fin": self.fin.isoformat() if self.fin else None,

@@ -116,6 +116,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(SQLAlchemyError)
     async def db_error_handler(request: Request, exc: SQLAlchemyError):
+        logger.error("SQLAlchemyError en %s: %s", request.url.path, exc)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={

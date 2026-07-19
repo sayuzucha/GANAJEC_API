@@ -2,9 +2,13 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from sqlalchemy import func
+import stripe
 from app.models import Usuario, Rancho, Bovino, Suscripcion, Veterinario
+from app.models.payment import Payment
+from app.models.plan import Plan
 from app.models.registro_sintoma import RegistroSintoma, Prediccion
 from app.models.alerta import Alerta
+from app.core.config import settings
 import datetime
 from app.schemas.general_schema import (
     RanchoCreate, RanchoUpdate,
@@ -922,3 +926,78 @@ class DuenoController:
             )
 
         return suscripcion.to_dict()
+
+    @staticmethod
+    def crear_suscripcion(db: Session, dueno_id: str, data):
+        dueno = db.query(Usuario).filter(
+            Usuario.id == dueno_id, Usuario.rol == "dueno"
+        ).first()
+        if not dueno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el dueno con id '{dueno_id}' no existe",
+            )
+
+        plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.activo == True).first()
+        if not plan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No encontrado: el plan con id '{data.plan_id}' no existe o no esta activo",
+            )
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        try:
+            intent = stripe.PaymentIntent.retrieve(data.payment_intent_id)
+        except stripe.error.StripeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error al verificar el pago con Stripe: {e.user_message}",
+            )
+
+        if intent.status != "succeeded":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El pago no fue completado. Estado de Stripe: {intent.status}",
+            )
+
+        payment = Payment(
+            usuario_id=dueno_id,
+            stripe_payment_intent_id=intent.id,
+            amount=intent.amount,
+            currency=intent.currency,
+            status="succeeded",
+        )
+        db.add(payment)
+
+        hoy = datetime.date.today()
+        tipo = getattr(data, "tipo_suscripcion", "mensual")
+        if tipo == "anual":
+            fin = hoy + datetime.timedelta(days=365)
+        else:
+            fin = hoy + datetime.timedelta(days=30)
+
+        suscripcion_actual = (
+            db.query(Suscripcion)
+            .filter(Suscripcion.usuario_id == dueno_id, Suscripcion.activa == True)
+            .first()
+        )
+        if suscripcion_actual:
+            suscripcion_actual.activa = False
+
+        nueva = Suscripcion(
+            usuario_id=dueno_id,
+            plan_id=data.plan_id,
+            tipo_suscripcion=tipo,
+            inicio=hoy,
+            fin=fin,
+            activa=True,
+        )
+        db.add(nueva)
+        db.commit()
+        db.refresh(nueva)
+
+        return {
+            "mensaje": f"Gracias por adquirir el plan {plan.nombre}! Tus nuevas funciones han sido desbloqueadas.",
+            "suscripcion": nueva.to_dict(),
+            "pago_confirmado": True,
+        }

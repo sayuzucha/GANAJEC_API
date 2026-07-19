@@ -7,7 +7,7 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id = Column(Integer, primary_key=True, index=True)
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    usuario_id = Column(String(36), ForeignKey("usuarios.id"), nullable=False)
     stripe_payment_intent_id = Column(String(255), unique=True, nullable=False)
     amount = Column(Integer, nullable=False)  # en centavos
     currency = Column(String(10), default="mxn")

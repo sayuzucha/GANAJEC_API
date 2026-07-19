@@ -14,6 +14,7 @@ from app.schemas.general_schema import (
     DuenoPerfilUpdate,
     MoverGanaderoRancho,
 )
+from app.schemas.payment_schema import ConfirmarSuscripcionRequest
 
 router = APIRouter()
 dueno_only = require_role("dueno")
@@ -215,6 +216,14 @@ async def obtener_suscripcion(dueno_id: str, db: Session = Depends(get_db),
                               usuario=Depends(dueno_only),
                               _=Depends(require_self_dueno)):
     return DuenoController.obtener_suscripcion(db, dueno_id)
+
+
+@router.post("/{dueno_id}/suscripcion", status_code=201)
+async def crear_suscripcion(dueno_id: str, data: ConfirmarSuscripcionRequest,
+                            db: Session = Depends(get_db),
+                            usuario=Depends(dueno_only),
+                            _=Depends(require_self_dueno)):
+    return DuenoController.crear_suscripcion(db, dueno_id, data)
 
 
 @router.put("/{dueno_id}/perfil")
