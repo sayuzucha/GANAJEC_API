@@ -193,6 +193,7 @@ class AdminController:
     @staticmethod
     def estado_sistema(db: Session):
         total_usuarios = db.query(Usuario).count()
+        usuarios_activos = db.query(Usuario).filter(Usuario.activo == True).count()
         total_ranchos = db.query(Rancho).count()
         total_bovinos = db.query(Bovino).count()
 
@@ -207,6 +208,7 @@ class AdminController:
             "estado_general": "operativo",
             "estadisticas": {
                 "total_usuarios": total_usuarios,
+                "usuarios_activos": usuarios_activos,
                 "total_ranchos": total_ranchos,
                 "total_bovinos": total_bovinos,
             },
