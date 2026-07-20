@@ -138,6 +138,19 @@ def notify_alerta_productiva(fcm_token: str, bovino_nombre: str, score: float) -
     )
 
 
+def notify_asignacion_rancho(fcm_token: str, nombre_rancho: str) -> bool:
+    """Notificación cuando un ganadero es asignado a un rancho por el dueño."""
+    return send_alert_notification(
+        fcm_token=fcm_token,
+        titulo="Has sido asignado a un rancho",
+        cuerpo=f"Ya perteneces al rancho '{nombre_rancho}'. Dirígete a Mi Perfil para ver los detalles.",
+        data={
+            "tipo": "asignacion_rancho",
+            "rancho": nombre_rancho,
+        },
+    )
+
+
 def notify_alerta_clinica(fcm_token: str, bovino_nombre: str, enfermedad: str, confianza: float) -> bool:
     """Notificación para predicción clínica de alta severidad por Random Forest."""
     porcentaje = f"{confianza * 100:.0f}%"

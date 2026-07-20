@@ -23,6 +23,8 @@ class Usuario(Base, UUIDMixin):
     # Rancho al que pertenece el ganadero (solo aplica para rol=ganadero).
     # NULL significa que aún no está asignado a ningún rancho.
     rancho_id = Column(String(36), ForeignKey("ranchos.id"), nullable=True)
+    # Control de notificación de asignación a rancho (solo ganaderos creados por el dueño).
+    notificacion_asignacion_enviada = Column(Boolean, default=False, nullable=False)
 
     # Relaciones
     ranchos = relationship("Rancho", back_populates="dueno", foreign_keys="Rancho.dueno_id")
@@ -43,6 +45,7 @@ class Usuario(Base, UUIDMixin):
             "email_verificado": self.email_verificado,
             "ultima_actividad": self.ultima_actividad.isoformat() if self.ultima_actividad else None,
             "rancho_id": self.rancho_id,
+            "notificacion_asignacion_enviada": self.notificacion_asignacion_enviada,
             "creado_en": self.creado_en.isoformat() if self.creado_en else None,
         }
         if include_email:

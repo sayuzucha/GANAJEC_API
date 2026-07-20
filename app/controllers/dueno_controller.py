@@ -235,6 +235,7 @@ class DuenoController:
             password_hash=hash_password(data.password),
             rol="ganadero",
             activo=True,
+            email_verificado=True,
             rancho_id=data.rancho_id,
         )
         db.add(nuevo)

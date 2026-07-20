@@ -13,9 +13,10 @@ from app.schemas.auth_schema import (
     VerificarEmailRequest,
     ReenviarCodigoRequest,
     SolicitarRecuperacionRequest,
-    RestablecerPasswordRequest,
     PreRegistroRequest,
+    RestablecerPasswordRequest,
 )
+from app.services import fcm_service
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.email_service import enviar_codigo
 
@@ -107,6 +108,18 @@ class AuthController:
 
         usuario.fcm_token = data.fcm_token
         db.commit()
+
+        if (
+            data.fcm_token
+            and usuario.rancho_id
+            and not usuario.notificacion_asignacion_enviada
+        ):
+            from app.models import Rancho
+            rancho = db.query(Rancho).filter(Rancho.id == usuario.rancho_id).first()
+            if rancho:
+                fcm_service.notify_asignacion_rancho(data.fcm_token, rancho.nombre)
+                usuario.notificacion_asignacion_enviada = True
+                db.commit()
 
         accion = "registrado" if data.fcm_token else "eliminado"
         return {"mensaje": f"FCM token {accion} correctamente"}
