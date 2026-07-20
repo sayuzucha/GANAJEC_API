@@ -51,6 +51,8 @@ class VeterinarioUpdate(BaseModel):
 
 # ── Administrador ─────────────────────────────────────
 class UsuarioUpdate(BaseModel):
+    nombre: Optional[str] = Field(None, min_length=3)
+    email: Optional[str] = None
     activo: Optional[bool] = None
     rol: Optional[str] = Field(None, pattern="^(ganadero|dueno|admin)$")
 
