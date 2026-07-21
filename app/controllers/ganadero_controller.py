@@ -405,6 +405,10 @@ class GanaderoController:
             "registro": nuevo.to_dict(),
             "prediccion": prediccion.to_dict(),
             "anomalia_productiva": resultado_iso,
+            # Fuente de cada sintoma para que el frontend pueda etiquetar
+            # cuales vinieron del formulario y cuales extrajo el NLP del texto.
+            "sintomas_form": sintomas_usuario,
+            "sintomas_nlp": sintomas_nlp,
         }
         if alerta_creada:
             respuesta["alerta_productiva"] = alerta_creada.to_dict()

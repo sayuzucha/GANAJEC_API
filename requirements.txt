@@ -9,7 +9,8 @@ bcrypt==4.0.1
 scikit-learn==1.5.2
 joblib==1.4.2
 numpy==1.26.4
-spacy==3.8.13
+transformers>=4.40.0
+# torch debe instalarse por separado: pip install torch --index-url https://download.pytorch.org/whl/cpu
 firebase-admin==6.5.0
 slowapi==0.1.9
 stripe
