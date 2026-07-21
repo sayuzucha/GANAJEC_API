@@ -1,0 +1,162 @@
+[
+    {
+        "cve_ent": "01",
+        "clave": "Ags.",
+        "nombre": "AGUASCALIENTES"
+    },
+    {
+        "cve_ent": "02",
+        "clave": "BC",
+        "nombre": "BAJA CALIFORNIA"
+    },
+    {
+        "cve_ent": "03",
+        "clave": "BCS",
+        "nombre": "BAJA CALIFORNIA SUR"
+    },
+    {
+        "cve_ent": "04",
+        "clave": "Camp.",
+        "nombre": "CAMPECHE"
+    },
+    {
+        "cve_ent": "05",
+        "clave": "Coah.",
+        "nombre": "COAHUILA DE ZARAGOZA"
+    },
+    {
+        "cve_ent": "06",
+        "clave": "Col.",
+        "nombre": "COLIMA"
+    },
+    {
+        "cve_ent": "07",
+        "clave": "Chis.",
+        "nombre": "CHIAPAS"
+    },
+    {
+        "cve_ent": "08",
+        "clave": "Chih.",
+        "nombre": "CHIHUAHUA"
+    },
+    {
+        "cve_ent": "09",
+        "clave": "CDMX",
+        "nombre": "CIUDAD DE MÉXICO"
+    },
+    {
+        "cve_ent": "10",
+        "clave": "Dgo.",
+        "nombre": "DURANGO"
+    },
+    {
+        "cve_ent": "11",
+        "clave": "Gto.",
+        "nombre": "GUANAJUATO"
+    },
+    {
+        "cve_ent": "12",
+        "clave": "Gro.",
+        "nombre": "GUERRERO"
+    },
+    {
+        "cve_ent": "13",
+        "clave": "Hgo.",
+        "nombre": "HIDALGO"
+    },
+    {
+        "cve_ent": "14",
+        "clave": "Jal.",
+        "nombre": "JALISCO"
+    },
+    {
+        "cve_ent": "15",
+        "clave": "Mex.",
+        "nombre": "MÉXICO"
+    },
+    {
+        "cve_ent": "16",
+        "clave": "Mich.",
+        "nombre": "MICHOACÁN DE OCAMPO"
+    },
+    {
+        "cve_ent": "17",
+        "clave": "Mor.",
+        "nombre": "MORELOS"
+    },
+    {
+        "cve_ent": "18",
+        "clave": "Nay.",
+        "nombre": "NAYARIT"
+    },
+    {
+        "cve_ent": "19",
+        "clave": "NL",
+        "nombre": "NUEVO LEÓN"
+    },
+    {
+        "cve_ent": "20",
+        "clave": "Oax.",
+        "nombre": "OAXACA"
+    },
+    {
+        "cve_ent": "21",
+        "clave": "Pue.",
+        "nombre": "PUEBLA"
+    },
+    {
+        "cve_ent": "22",
+        "clave": "Qro.",
+        "nombre": "QUERÉTARO"
+    },
+    {
+        "cve_ent": "23",
+        "clave": "Q. Roo",
+        "nombre": "QUINTANA ROO"
+    },
+    {
+        "cve_ent": "24",
+        "clave": "SLP",
+        "nombre": "SAN LUIS POTOSÍ"
+    },
+    {
+        "cve_ent": "25",
+        "clave": "Sin.",
+        "nombre": "SINALOA"
+    },
+    {
+        "cve_ent": "26",
+        "clave": "Son.",
+        "nombre": "SONORA"
+    },
+    {
+        "cve_ent": "27",
+        "clave": "Tab.",
+        "nombre": "TABASCO"
+    },
+    {
+        "cve_ent": "28",
+        "clave": "Tamps.",
+        "nombre": "TAMAULIPAS"
+    },
+    {
+        "cve_ent": "29",
+        "clave": "Tlax.",
+        "nombre": "TLAXCALA"
+    },
+    {
+        "cve_ent": "30",
+        "clave": "Ver.",
+        "nombre": "VERACRUZ DE IGNACIO DE LA LLAVE"
+    },
+    {
+        "cve_ent": "31",
+        "clave": "Yuc.",
+        "nombre": "YUCATÁN"
+    },
+    {
+        "cve_ent": "32",
+        "clave": "Zac.",
+        "nombre": "ZACATECAS"
+    }
+]

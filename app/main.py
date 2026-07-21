@@ -16,6 +16,7 @@ from app.core.database import engine, Base
 from app.core.deps import limiter
 import app.models  # registra todos los modelos antes de create_all
 from app.routes.payment_routes import router as payment_router
+from app.routes.ubicacion_routes import router as ubicacion_router
 
 logger = logging.getLogger("ganajec")
 
@@ -148,6 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(dueno_router, prefix="/api/dueno", tags=["Dueno del rancho"])
     app.include_router(admin_router, prefix="/api/admin", tags=["Administrador"])
     app.include_router(payment_router)
+    app.include_router(ubicacion_router, prefix="/api/ubicacion", tags=["Ubicacion"])
     @app.get("/api", tags=["Root"])
     async def root():
         return {
@@ -160,6 +162,7 @@ def create_app() -> FastAPI:
                 "dueno": "/api/dueno",
                 "admin": "/api/admin",
                 "payments": "/api/payments",
+                "ubicacion": "/api/ubicacion",
             },
         }
 
