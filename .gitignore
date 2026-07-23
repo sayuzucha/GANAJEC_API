@@ -17,6 +17,10 @@ env/
 # ── Logs ─────────────────────────────────────────────────
 *.log
 
+# ── HuggingFace cache (BETO — se descarga automáticamente) ──
+.cache/
+~/.cache/huggingface/
+
 # ── Editor / SO ──────────────────────────────────────────
 .vscode/
 .idea/
@@ -40,3 +44,5 @@ DIANA
 mineriaHoracio
 MineriaRamses
 package-lock.json
+ALONSO
+README_AI_NLP.md

@@ -1,40 +1,33 @@
 """
-Modulo de Procesamiento de Lenguaje Natural (NLP) de GANAJEC AI.
+Módulo NLP de GANAJEC AI — BETO como motor principal.
 
-Procesa el campo `texto_libre` que el ganadero escribe al registrar
-sintomas (ej. "el animal tiene fiebre y no quiere comer") y extrae una
-lista de sintomas estandarizados.
+Motor primario : dccuchile/bert-base-spanish-wwm-cased (BETO)
+  - Embeddings de texto con mean-pooling sobre los hidden states.
+  - Los embeddings de los ~20 síntomas se pre-computan al arrancar la API
+    y se cachean; solo se hace 1 forward-pass por petición.
+  - Similitud coseno texto → síntoma; umbral configurable (BETO_THRESHOLD).
 
-Arquitectura:
-- spaCy (es): tokenizacion y normalizacion del texto en español.
-  Usa `spacy.blank("es")`, que NO requiere descargar un modelo entrenado
-  (los modelos pre-entrenados de spaCy no son descargables en este entorno
-  por restricciones de red, pero el paquete base si incluye tokenizador
-  y stopwords en español).
-- Diccionario de sintomas: ~20 sintomas veterinarios comunes en bovinos,
-  con sus variantes/expresiones coloquiales en español de Mexico.
-- Perfil de enfermedades: relaciona cada enfermedad del modelo Random Forest
-  con los sintomas que tipicamente la acompañan, para calcular que tan bien
-  el texto del ganadero "concuerda" con la prediccion de Random Forest.
-- DistilBETO (opcional): si en el servidor de despliegue estan instalados
-  `transformers` + `torch` y hay acceso a internet a huggingface.co, se
-  activa automaticamente un analisis semantico adicional con el modelo
-  "dccuchile/distilbert-base-spanish-uncased". Si no esta disponible
-  (como en este entorno de desarrollo), el modulo sigue funcionando solo
-  con spaCy + el diccionario de reglas.
+Motor de respaldo : spaCy (es) + diccionario de reglas
+  - Se activa automáticamente si BETO no se puede cargar (sin internet,
+    sin torch/transformers, o fallo de red a HuggingFace).
+  - Misma interfaz de retorno; el campo "modelo_nlp" indica cuál se usó.
 """
+
 import re
 import unicodedata
+import logging
 import spacy
 
-_nlp = spacy.blank("es")
+logger = logging.getLogger(__name__)
+
+_nlp_spacy = spacy.blank("es")
 
 # ─────────────────────────────────────────────────────────────────────
-# Diccionario de sintomas: codigo estandarizado -> frases en español
-# que indican ese sintoma. Las frases ya estan normalizadas (minusculas,
-# sin acentos) para comparar contra el texto normalizado.
+# Diccionario de síntomas: código estandarizado → frases en español.
+# Se usa tanto como vocabulario de referencia para BETO (embeddings)
+# como fallback completo en el modo reglas.
 # ─────────────────────────────────────────────────────────────────────
-SYMPTOM_KEYWORDS = {
+SYMPTOM_KEYWORDS: dict[str, list[str]] = {
     "fiebre": [
         "fiebre", "calentura", "temperatura alta", "esta caliente",
         "muy caliente", "tiene temperatura",
@@ -58,7 +51,7 @@ SYMPTOM_KEYWORDS = {
         "popo liquido", "evacuaciones liquidas", "excremento aguado",
     ],
     "tos": [
-        "tose", "tos seca", "tos constante", " tos ", "tosiendo",
+        "tose", "tos seca", "tos constante", "tos", "tosiendo",
     ],
     "dificultad_respiratoria": [
         "respira con dificultad", "le falta el aire", "jadea", "jadeo",
@@ -133,12 +126,9 @@ SYMPTOM_KEYWORDS = {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Perfil de sintomas por enfermedad. Usa los mismos codigos de
-# `Disease_Status` del dataset (los que produce Random Forest en
-# app/ml/predictor.py). "Healthy" = sin sintomas esperados.
+# Perfil de síntomas por enfermedad (para calcular concordancia).
 # ─────────────────────────────────────────────────────────────────────
-DISEASE_SYMPTOM_PROFILE = {
-    # ── Enfermedades del dataset Training.csv (26 clases) ──────────
+DISEASE_SYMPTOM_PROFILE: dict[str, set[str]] = {
     "acetonaemia":                   {"aliento_cetonas", "anorexia", "baja_produccion_leche", "decaimiento"},
     "blackleg":                      {"fiebre", "cojera", "hinchazon_cuello", "decaimiento"},
     "bloat":                         {"distension_abdominal", "decaimiento", "anorexia"},
@@ -167,55 +157,166 @@ DISEASE_SYMPTOM_PROFILE = {
     "wooden_tongue":                 {"salivacion_excesiva", "ampollas_boca", "hinchazon_cuello", "anorexia"},
 }
 
+# ─────────────────────────────────────────────────────────────────────
+# Estado de BETO
+# ─────────────────────────────────────────────────────────────────────
+_beto: dict = {
+    "intentado": False,
+    "disponible": False,
+    "tokenizer": None,
+    "model": None,
+    "embeddings_sintomas": {},   # código → Tensor (1, hidden)
+}
+
+# Umbral de similitud coseno para considerar un síntoma detectado.
+# BETO wwm-cased con mean-pooling suele dar ~0.88-0.95 para frases
+# semánticamente idénticas y ~0.65-0.75 para frases no relacionadas.
+BETO_THRESHOLD = 0.82
+
+
+def _cargar_beto() -> bool:
+    """Carga BETO una sola vez. Retorna True si está disponible."""
+    if _beto["intentado"]:
+        return _beto["disponible"]
+
+    _beto["intentado"] = True
+    try:
+        from transformers import AutoTokenizer, AutoModel  # noqa: F401
+        import torch  # noqa: F401
+
+        logger.info("[NLP] Cargando BETO (dccuchile/bert-base-spanish-wwm-cased)…")
+        tok = AutoTokenizer.from_pretrained("dccuchile/bert-base-spanish-wwm-cased")
+        mod = AutoModel.from_pretrained("dccuchile/bert-base-spanish-wwm-cased")
+        mod.eval()
+
+        _beto["tokenizer"] = tok
+        _beto["model"] = mod
+        _beto["disponible"] = True
+
+        # Pre-computar embeddings de síntomas al arrancar (se cachean)
+        _precomputar_embeddings_sintomas()
+        logger.info("[NLP] BETO cargado y embeddings de síntomas pre-computados.")
+    except Exception as exc:
+        logger.warning(f"[NLP] BETO no disponible ({exc}). Usando reglas.")
+        _beto["disponible"] = False
+
+    return _beto["disponible"]
+
+
+def _mean_pool(last_hidden_state, attention_mask):
+    """Mean pooling sobre los token embeddings (excluye padding)."""
+    import torch
+    mask = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
+    return torch.sum(last_hidden_state * mask, 1) / torch.clamp(mask.sum(1), min=1e-9)
+
+
+def _embed(texto: str):
+    """Embedding BETO con mean-pooling para un texto dado."""
+    import torch
+    import torch.nn.functional as F
+    tok = _beto["tokenizer"]
+    mod = _beto["model"]
+    inputs = tok(
+        texto,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=64,
+    )
+    with torch.no_grad():
+        out = mod(**inputs)
+    emb = _mean_pool(out.last_hidden_state, inputs["attention_mask"])
+    return F.normalize(emb, p=2, dim=1)  # normalizado → cosine = dot product
+
+
+def _precomputar_embeddings_sintomas():
+    """
+    Pre-computa el embedding BETO de cada síntoma como la media de los
+    embeddings de sus 3 primeras frases representativas.
+    Se llama una sola vez al cargar el módulo.
+    """
+    import torch
+    cache = _beto["embeddings_sintomas"]
+    for codigo, frases in SYMPTOM_KEYWORDS.items():
+        embs = [_embed(f) for f in frases[:3]]
+        cache[codigo] = torch.mean(torch.stack(embs), dim=0)
+
+
+def _extraer_con_beto(texto_libre: str) -> list[str]:
+    """
+    Extrae síntomas usando BETO:
+    1. Embedding del texto completo (mean-pool, normalizado).
+    2. Similitud coseno contra cada embedding de síntoma pre-computado.
+    3. Se reporta el síntoma si similitud ≥ BETO_THRESHOLD.
+
+    Solo 1 forward-pass de BETO por petición.
+    """
+    import torch
+
+    cache = _beto["embeddings_sintomas"]
+    emb_texto = _embed(texto_libre)           # (1, hidden)
+
+    detectados = []
+    for codigo, emb_sint in cache.items():
+        # Ambos están normalizados → similitud coseno = producto punto
+        sim = torch.mm(emb_texto, emb_sint.t()).item()
+        if sim >= BETO_THRESHOLD:
+            detectados.append(codigo)
+
+    return detectados
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Modo fallback: spaCy + diccionario de reglas
+# ─────────────────────────────────────────────────────────────────────
 
 def _normalizar(texto: str) -> str:
-    """Minusculas, sin acentos, espacios colapsados."""
     texto = texto.lower()
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = re.sub(r"\s+", " ", texto)
-    return f" {texto} "  # padding para que " tos " no choque con "tos" dentro de otra palabra
+    return f" {texto} "
 
 
-def extraer_sintomas(texto_libre: str) -> list[str]:
-    """
-    Tokeniza el texto con spaCy y busca coincidencias del diccionario
-    SYMPTOM_KEYWORDS sobre el texto normalizado.
-
-    Retorna una lista (sin duplicados, orden estable) de codigos de
-    sintoma detectados, ej: ["fiebre", "decaimiento", "anorexia"]
-    """
-    if not texto_libre:
-        return []
-
-    # spaCy tokeniza y normaliza espacios/puntuacion antes de la busqueda
-    doc = _nlp(texto_libre.lower())
-    texto_tokenizado = " ".join(t.text for t in doc if not t.is_space)
-    texto_norm = _normalizar(texto_tokenizado)
+def _extraer_con_reglas(texto_libre: str) -> list[str]:
+    doc = _nlp_spacy(texto_libre.lower())
+    texto_norm = _normalizar(" ".join(t.text for t in doc if not t.is_space))
 
     detectados = []
     for codigo, frases in SYMPTOM_KEYWORDS.items():
         for frase in frases:
-            if _normalizar(frase).strip() and _normalizar(frase) in texto_norm or f" {frase} " in texto_norm:
+            frase_norm = _normalizar(frase).strip()
+            if frase_norm and (frase_norm in texto_norm or f" {frase_norm} " in texto_norm):
                 detectados.append(codigo)
                 break
 
     return detectados
 
 
+# ─────────────────────────────────────────────────────────────────────
+# API pública del módulo
+# ─────────────────────────────────────────────────────────────────────
+
+def extraer_sintomas(texto_libre: str) -> list[str]:
+    """
+    Extrae síntomas del texto libre.
+    Motor: BETO si está disponible, reglas en caso contrario.
+    """
+    if not texto_libre:
+        return []
+    if _cargar_beto():
+        try:
+            return _extraer_con_beto(texto_libre)
+        except Exception as exc:
+            logger.warning(f"[NLP] Error en BETO, usando reglas: {exc}")
+    return _extraer_con_reglas(texto_libre)
+
+
 def calcular_concordancia(sintomas_detectados: list[str], enfermedad_codigo: str) -> float | None:
     """
-    Calcula que tan bien los sintomas detectados en el texto coinciden
-    con el perfil tipico de la enfermedad predicha por Random Forest.
-
-    Retorna un valor entre 0.0 y 1.0, o None si la enfermedad no tiene
-    perfil definido.
-
-    - Para "Healthy": 1.0 si no se detecto ningun sintoma, decreciendo
-      por cada sintoma detectado (un texto con muchos sintomas no
-      concuerda con "sano").
-    - Para enfermedades: proporcion del perfil tipico que aparece en
-      los sintomas detectados.
+    Proporción de síntomas del perfil típico de la enfermedad que
+    aparecen en los síntomas detectados (0.0–1.0).
+    Retorna None si la enfermedad no tiene perfil definido.
     """
     perfil = DISEASE_SYMPTOM_PROFILE.get(enfermedad_codigo)
     if perfil is None:
@@ -233,100 +334,29 @@ def calcular_concordancia(sintomas_detectados: list[str], enfermedad_codigo: str
     return round(len(interseccion) / len(perfil), 4)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# DistilBETO (opcional) — analisis semantico adicional.
-#
-# Requiere `pip install transformers torch` y acceso a internet a
-# huggingface.co para descargar "dccuchile/distilbert-base-spanish-uncased"
-# la primera vez. En este entorno de desarrollo NO esta disponible
-# (la descarga del modelo esta bloqueada por la red del sandbox), por lo
-# que `distilbeto_disponible` sera False y el analisis se basa solo en
-# spaCy + el diccionario de reglas. En el servidor de despliegue, si las
-# dependencias estan instaladas, se activa automaticamente.
-# ─────────────────────────────────────────────────────────────────────
-_distilbeto_estado = {"intentado": False, "disponible": False, "tokenizer": None, "model": None}
-
-
-def _cargar_distilbeto():
-    if _distilbeto_estado["intentado"]:
-        return _distilbeto_estado["disponible"]
-
-    _distilbeto_estado["intentado"] = True
-    try:
-        from transformers import AutoTokenizer, AutoModel  # noqa: F401
-        import torch  # noqa: F401
-
-        tokenizer = AutoTokenizer.from_pretrained("dccuchile/distilbert-base-spanish-uncased")
-        model = AutoModel.from_pretrained("dccuchile/distilbert-base-spanish-uncased")
-        model.eval()
-
-        _distilbeto_estado["tokenizer"] = tokenizer
-        _distilbeto_estado["model"] = model
-        _distilbeto_estado["disponible"] = True
-    except Exception:
-        _distilbeto_estado["disponible"] = False
-
-    return _distilbeto_estado["disponible"]
-
-
-def _similitud_distilbeto(texto: str, frases: list[str]) -> dict:
+def analizar_texto(texto_libre: str) -> dict:
     """
-    Calcula la similitud coseno entre el embedding de `texto` y el de
-    cada frase en `frases`, usando los embeddings [CLS] de DistilBETO.
-    Solo se llama si _cargar_distilbeto() retorno True.
-    """
-    import torch
-
-    tokenizer = _distilbeto_estado["tokenizer"]
-    model = _distilbeto_estado["model"]
-
-    def embed(s: str):
-        tokens = tokenizer(s, return_tensors="pt", truncation=True, padding=True)
-        with torch.no_grad():
-            out = model(**tokens)
-        return out.last_hidden_state[:, 0, :]  # embedding del token [CLS]
-
-    emb_texto = embed(texto)
-    resultados = {}
-    for frase in frases:
-        emb_frase = embed(frase)
-        sim = torch.nn.functional.cosine_similarity(emb_texto, emb_frase).item()
-        resultados[frase] = round(sim, 4)
-
-    return resultados
-
-
-def analizar_texto(texto_libre: str, enfermedad_codigo: str = None) -> dict:
-    """
-    Punto de entrada principal del modulo NLP.
+    Punto de entrada principal del módulo NLP.
 
     Retorna:
         {
-            "sintomas_detectados": [...],
-            "modelo_nlp": "spaCy (es) + diccionario de sintomas",
-            "distilbeto_disponible": bool,
-            "concordancia_con_prediccion": float | None,
+            "sintomas_detectados": ["anorexia", "secrecion_ocular", ...],
+            "modelo_nlp": "BETO (dccuchile/bert-base-spanish-wwm-cased)" | "spaCy + reglas",
+            "beto_disponible": bool,
+            "concordancia_con_prediccion": float | None,  # se rellena en el controller
         }
     """
+    beto_ok = _cargar_beto()
     sintomas = extraer_sintomas(texto_libre)
 
-    resultado = {
+    return {
         "sintomas_detectados": sintomas,
-        "modelo_nlp": "spaCy (es) + diccionario de sintomas veterinarios",
-        "distilbeto_disponible": _cargar_distilbeto(),
+        "modelo_nlp": (
+            "BETO (dccuchile/bert-base-spanish-wwm-cased)"
+            if beto_ok
+            else "spaCy (es) + diccionario de síntomas veterinarios"
+        ),
+        "beto_disponible": beto_ok,
+        # concordancia_con_prediccion se agrega en ganadero_controller
+        # después de obtener el resultado de Random Forest
     }
-
-    if enfermedad_codigo is not None:
-        resultado["concordancia_con_prediccion"] = calcular_concordancia(sintomas, enfermedad_codigo)
-
-    # Si DistilBETO esta disponible (servidor con internet), agrega un
-    # analisis semantico adicional comparando el texto contra los
-    # nombres de los sintomas detectados.
-    if resultado["distilbeto_disponible"] and sintomas:
-        try:
-            frases_referencia = [SYMPTOM_KEYWORDS[s][0] for s in sintomas]
-            resultado["similitud_semantica_distilbeto"] = _similitud_distilbeto(texto_libre, frases_referencia)
-        except Exception:
-            pass
-
-    return resultado

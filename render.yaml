@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: ganajec-api
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api
+    envVars:
+      # ── Base de datos (Aiven) ─────────────────────────────────────
+      # Pega el "Service URI" de Aiven tal cual — empieza con mysql://
+      - key: DATABASE_URL
+        sync: false
+      # ── JWT ──────────────────────────────────────────────────────
+      - key: SECRET_KEY
+        generateValue: true
+      # ── SMTP (correos) ────────────────────────────────────────────
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # ── Firebase FCM ──────────────────────────────────────────────
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      # ── Stripe ───────────────────────────────────────────────────
+      - key: STRIPE_SECRET_KEY
+        sync: false

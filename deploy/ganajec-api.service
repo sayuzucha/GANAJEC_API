@@ -1,0 +1,21 @@
+[Unit]
+Description=GANAJEC AI — FastAPI
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ganajec_api
+EnvironmentFile=/home/ubuntu/ganajec_api/.env
+ExecStart=/home/ubuntu/ganajec_api/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --log-level info
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

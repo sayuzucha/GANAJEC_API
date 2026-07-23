@@ -1,179 +1,104 @@
 """
-Script para crear todas las tablas en MySQL y poblar datos de ejemplo.
+Script para crear las tablas en MySQL y crear el usuario administrador.
 
 Uso:
     python seed.py
 
-Requiere que la base de datos exista (CREATE DATABASE ganajec_db;)
-y que las credenciales en .env sean correctas.
+Requiere que la base de datos exista:
+    CREATE DATABASE ganajec_db;
+
+Y que las credenciales configuradas en .env sean correctas.
 """
-import datetime
 
 from app.core.database import engine, SessionLocal, Base
 from app.core.security import hash_password
-from app.models import (
-    Usuario, Rancho, Bovino, RegistroSintoma, Prediccion,
-    HistorialProductivo, Alerta, Notificacion, Plan, Suscripcion,
-    AuditoriaLog, ConfiguracionSistema,
-)
+from app.models import Usuario
 
 
 def crear_tablas():
+    """
+    Crea todas las tablas definidas en los modelos de SQLAlchemy
+    que todavía no existan en la base de datos.
+    """
     print("Creando tablas...")
+
     Base.metadata.create_all(bind=engine)
+
     print("Tablas creadas correctamente.")
 
 
-def poblar_datos():
+def crear_admin():
+    """
+    Crea el usuario administrador si todavía no existe.
+    No modifica ni elimina los usuarios existentes.
+    """
+
     db = SessionLocal()
+
     try:
-        if db.query(Usuario).count() > 0:
-            print("Ya existen datos, no se vuelve a poblar.")
+        # Verificar si el administrador ya existe
+        admin_existente = db.query(Usuario).filter(
+            Usuario.email == "admin@ganajec.ai"
+        ).first()
+
+        if admin_existente:
+            print("")
+            print("El usuario administrador ya existe.")
+            print(f"Email: {admin_existente.email}")
+            print(f"Rol: {admin_existente.rol}")
             return
 
-        print("Insertando datos de ejemplo...")
-
-        # ── Usuarios ──────────────────────────────
+        # Crear usuario administrador
         admin = Usuario(
-            nombre="Admin GANAJEC", email="admin@ganajec.ai",
-            password_hash=hash_password("admin1234"), rol="admin", activo=True,
+            nombre="Admin GANAJEC",
+            email="admin@ganajec.ai",
+            password_hash=hash_password("admin1234"),
+            rol="admin",
+            activo=True,
+            email_verificado=True,
         )
-        dueno = Usuario(
-            nombre="Sayuri Zuniga", email="sayuri@ganajec.ai",
-            password_hash=hash_password("dueno1234"), rol="dueno", activo=True,
-        )
-        jared = Usuario(
-            nombre="Jared Torres Morga", email="jared@ganajec.ai",
-            password_hash=hash_password("ganadero1234"), rol="ganadero", activo=True,
-        )
-        carlos = Usuario(
-            nombre="Carlos Ramos Molina", email="carlos@ganajec.ai",
-            password_hash=hash_password("ganadero1234"), rol="ganadero", activo=True,
-        )
-        db.add_all([admin, dueno, jared, carlos])
+
+        # Agregar el usuario a la sesión
+        db.add(admin)
+
+        # Guardar los cambios en MySQL
         db.commit()
 
-        # ── Rancho ────────────────────────────────
-        rancho = Rancho(
-            nombre="Rancho El Tesoro", municipio="Tuxtla Gutierrez",
-            estado="Chiapas", dueno_id=dueno.id,
-        )
-        db.add(rancho)
-        db.commit()
-
-        # ── Bovinos ───────────────────────────────
-        b1 = Bovino(
-            rancho_id=rancho.id, ganadero_id=jared.id, nombre="Lupita",
-            raza="Holstein", sexo="hembra", categoria="vaca", proposito="leche",
-            fecha_nacimiento=datetime.date(2023, 3, 10), peso_kg=480.5, id_externo="MX-0001",
-        )
-        b2 = Bovino(
-            rancho_id=rancho.id, ganadero_id=jared.id, nombre="Toribio",
-            raza="Brahman", sexo="macho", categoria="toro", proposito="cria",
-            fecha_nacimiento=datetime.date(2022, 6, 18), peso_kg=620.0, id_externo="MX-0002",
-        )
-        b3 = Bovino(
-            rancho_id=rancho.id, ganadero_id=carlos.id, nombre="Pecas",
-            raza="Angus", sexo="macho", categoria="novillo", proposito="carne",
-            fecha_nacimiento=datetime.date(2024, 1, 5), peso_kg=410.2, id_externo="MX-0003",
-        )
-        db.add_all([b1, b2, b3])
-        db.commit()
-
-        # ── Registro de sintomas + prediccion ──────
-        registro = RegistroSintoma(
-            bovino_id=b3.id, ganadero_id=carlos.id,
-            texto_libre="El animal presenta cojera en la pata trasera derecha desde ayer, "
-                        "y se ve decaido, no quiere comer bien",
-            temperatura=39.8,
-            produccion_leche=None,
-            frecuencia_cardiaca=88.0,
-            frecuencia_respiratoria=32.0,
-            condicion_corporal=2.5,
-            consumo_alimento_kg=6.0,
-            consumo_agua_l=30.0,
-            sintomas_seleccionados=["cojera", "decaimiento", "fiebre"],
-        )
-        db.add(registro)
-        db.commit()
-
-        prediccion = Prediccion(
-            registro_id=registro.id, enfermedad="Fiebre aftosa",
-            confianza=0.87, severidad="alta",
-            features_nlp={"sintomas_detectados": ["cojera", "fiebre", "decaimiento"], "modelo": "RandomForest"},
-        )
-        db.add(prediccion)
-
-        # ── Historial productivo ───────────────────
-        hist = HistorialProductivo(
-            bovino_id=b1.id, fecha=datetime.date(2026, 6, 10),
-            litros_leche=18.5, kg_alimento=12.0, ganancia_peso_kg=0.5,
-            temperatura=38.4, anomalia_detectada=False,
-        )
-        db.add(hist)
-
-        # ── Alerta ──────────────────────────────────
-        alerta = Alerta(
-            bovino_id=b3.id, ganadero_id=carlos.id, tipo="clinica",
-            severidad="alta", mensaje="Isolation Forest detecto comportamiento anomalo en Pecas",
-            leida=False,
-        )
-        db.add(alerta)
-        db.commit()
-
-        notif = Notificacion(usuario_id=carlos.id, alerta_id=alerta.id, enviada=True,
-                              enviado_en=datetime.datetime.utcnow())
-        db.add(notif)
-
-        # ── Planes y suscripcion ───────────────────
-        plan_pro = Plan(
-            nombre="Pro", precio_mensual=200.0, precio_anual=2000.0,
-            limite_bovinos=100,
-            permisos={"alertas": True, "predicciones": True, "reportes": True}, activo=True,
-        )
-        db.add(plan_pro)
-        db.commit()
-
-        suscripcion = Suscripcion(
-            usuario_id=dueno.id, plan_id=plan_pro.id,
-            tipo_suscripcion="mensual",
-            inicio=datetime.date(2026, 6, 1), fin=datetime.date(2026, 7, 1), activa=True,
-        )
-        db.add(suscripcion)
-
-        # ── Configuracion del sistema ──────────────
-        config1 = ConfiguracionSistema(
-            clave="umbral_isolation_forest", valor="0.75",
-            descripcion="Umbral de sensibilidad para deteccion de anomalias",
-        )
-        config2 = ConfiguracionSistema(
-            clave="umbral_confianza_prediccion", valor="0.60",
-            descripcion="Confianza minima para mostrar una prediccion al usuario",
-        )
-        db.add_all([config1, config2])
-
-        # ── Log de auditoria inicial ───────────────
-        log = AuditoriaLog(
-            usuario_id=admin.id, accion="inicializacion_sistema",
-            entidad_afectada="sistema", detalle={"mensaje": "Base de datos inicializada con seed.py"},
-        )
-        db.add(log)
-
-        db.commit()
-        print("Datos de ejemplo insertados correctamente.")
         print("")
-        print("Usuarios de prueba (email / password):")
-        print("  admin@ganajec.ai    / admin1234     (admin)")
-        print("  sayuri@ganajec.ai   / dueno1234     (dueno)")
-        print("  jared@ganajec.ai    / ganadero1234  (ganadero)")
-        print("  carlos@ganajec.ai   / ganadero1234  (ganadero)")
+        print("======================================")
+        print("USUARIO ADMINISTRADOR CREADO")
+        print("======================================")
+        print(f"Email:      {admin.email}")
+        print("Password:   admin1234")
+        print(f"Rol:        {admin.rol}")
+        print("Activo:     Sí")
+        print("Verificado: Sí")
+        print("======================================")
+
+    except Exception as e:
+        # Si ocurre un error, deshacer los cambios
+        db.rollback()
+
         print("")
-        print(f"Rancho ID: {rancho.id}")
+        print("ERROR AL CREAR EL USUARIO ADMINISTRADOR")
+        print(f"Detalle: {e}")
 
     finally:
+        # Cerrar la conexión con la base de datos
         db.close()
 
 
 if __name__ == "__main__":
+    print("")
+    print("======================================")
+    print("INICIALIZANDO BASE DE DATOS GANAJEC")
+    print("======================================")
+
+    # 1. Crear las tablas que no existan
     crear_tablas()
-    poblar_datos()
+
+    # 2. Crear únicamente el usuario administrador
+    crear_admin()
+
+    print("")
+    print("Proceso terminado.")

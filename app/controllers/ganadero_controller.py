@@ -9,6 +9,24 @@ from app.ml import predictor
 from app.ml import nlp
 from app.services import fcm_service
 
+# ── Mapeo de etiquetas de UI (Flutter) → claves NLP del predictor ──────────────
+# Las etiquetas que muestra el formulario ("No come", "Decaída"…) deben
+# convertirse a las claves internas de _NLP_A_DATASET antes de pasarlas al modelo.
+_ETIQUETAS_UI_A_NLP: dict[str, str] = {
+    "No come":              "anorexia",
+    "Decaída":              "decaimiento",
+    "Cojea":                "cojera",
+    "Ojos llorosos":        "secrecion_ocular",
+    "Secreción nasal":      "secrecion_nasal",
+    "Aislada":              "decaimiento",
+    "Dificultad respirar":  "dificultad_respiratoria",
+    "Fiebre visible":       "fiebre",
+    "Diarrea":              "diarrea",
+    "Ubre inflamada":       "hinchazon_ubre",
+    "Pérdida de peso":      "perdida_peso",
+    "Temblores":            "temblores",
+}
+
 
 class GanaderoController:
     """
@@ -268,13 +286,16 @@ class GanaderoController:
                 detail=f"No encontrado: el bovino con id '{data.bovino_id}' no existe",
             )
 
-        # ── 0. NLP: extraer sintomas del texto libre (spaCy + reglas) ──
+        # ── 0. NLP: extraer sintomas del texto libre (BETO / spaCy + reglas) ──
         analisis_nlp = nlp.analizar_texto(data.texto_libre)
         sintomas_nlp = analisis_nlp["sintomas_detectados"]
 
-        # Union entre los sintomas que el ganadero selecciono manualmente
-        # y los que el NLP detecto automaticamente en el texto.
-        sintomas_usuario = data.sintomas_seleccionados or []
+        # Convertir etiquetas del formulario Flutter ("No come" → "anorexia", etc.)
+        # al vocabulario interno que usa _NLP_A_DATASET en el predictor.
+        sintomas_usuario = [
+            _ETIQUETAS_UI_A_NLP.get(s, s)
+            for s in (data.sintomas_seleccionados or [])
+        ]
         sintomas_fusionados = list(dict.fromkeys([*sintomas_usuario, *sintomas_nlp]))
 
         nuevo = RegistroSintoma(
@@ -313,7 +334,32 @@ class GanaderoController:
         }
 
         # ── 1. Random Forest: predecir enfermedad ──────────────────
-        resultado_rf = predictor.predecir_enfermedad(datos_ml)
+        # Si no hay síntomas, descripción vacía y temperatura normal →
+        # el animal está sano: retornamos "Healthy" directamente sin
+        # consultar al modelo (evita que un vector todo-cero prediga
+        # una enfermedad por azar).
+        texto_significativo = bool(data.texto_libre and data.texto_libre.strip())
+        temp_normal = nuevo.temperatura is None or nuevo.temperatura < 39.5
+        sin_sintomas = len(sintomas_fusionados) == 0
+
+        if sin_sintomas and not texto_significativo and temp_normal:
+            resultado_rf = {
+                "enfermedad":        "Sin enfermedad detectada",
+                "enfermedad_codigo": "Healthy",
+                "confianza":         1.0,
+                "severidad":         "leve",
+                "features_nlp": {
+                    "modelo":             "ReglaDirecta",
+                    "version_modelo":     "1.0",
+                    "sintomas_activos":   [],
+                    "top_3_predicciones": [
+                        {"enfermedad": "Sin enfermedad detectada", "probabilidad": 1.0}
+                    ],
+                    "variables_usadas": "Sin síntomas ni descripción — Healthy directo",
+                },
+            }
+        else:
+            resultado_rf = predictor.predecir_enfermedad(datos_ml)
 
         # Calcular que tan bien los sintomas detectados por NLP
         # concuerdan con la enfermedad predicha por Random Forest
